@@ -48,7 +48,7 @@ async def auto_delete_message(msg: Message, delay: int = AUTO_DELETE_NOTIFICATIO
 
 
 # ── /odam [har qanday son quyish mumkin] ───────────────────────────
-@router.message(Command("odam", "setinvites"))
+@router.message(Command("odam", "setinvites", ignore_case=True))
 async def cmd_odam(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
@@ -57,9 +57,13 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     current = group.get("min_invites", 0)
 
+    # Admin ekanligini tekshirish (anonim admin va guruh egasini ham hisobga olgan holda)
+    user_id = message.from_user.id if message.from_user else None
+    user_is_admin = await is_admin(bot, message.chat.id, user_id, message=message)
+
     # Agar oddiy a'zo yozsa, hozirgi talab haqida ma'lumot beramiz
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
-        user_invites = await db.get_user_invites(message.chat.id, message.from_user.id)
+    if not user_is_admin:
+        user_invites = await db.get_user_invites(message.chat.id, user_id) if user_id else 0
         if current > 0:
             left = max(0, current - user_invites)
             await message.reply(
@@ -72,7 +76,8 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
             )
         else:
             await message.reply(
-                "👥 Bu guruhda hozirda majburiy a'zo qo'shish talabi yo'q (erkin muloqot).",
+                "👥 Bu guruhda hozirda majburiy a'zo qo'shish talabi yo'q (erkin muloqot).\n\n"
+                "ℹ️ Agar siz guruh admini bo'lsangiz, buyruqni shaxsiy profilingiz orqali yoki adminlik huquqi bilan yuboring.",
                 parse_mode="Markdown",
             )
         return
@@ -96,9 +101,10 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
 
     if count > 0:
         await message.reply(
-            f"✅ **Majburiy a'zo talabi {count} ta qilib belgilandi!**\n\n"
-            f"Endi oddiy foydalanuvchilar guruhda yozishlari uchun kamida **{count}** ta odam qo'shishlari shart bo'ladi.\n"
-            f"Takliflarni tekshirish uchun: `/takliflarim`",
+            f"✅ **Majburiy a'zo talabi {count} ta qilib belgilandi va ishga tushirildi!** 👥\n\n"
+            f"📌 Endi oddiy a'zolar guruhda yozishlari uchun kamida **{count}** ta do'stini taklif qilishlari shart.\n"
+            f"🚫 A'zo qo'shmaganlarning xabarlari avtomatik o'chiriladi va ogohlantirish yuboriladi.\n\n"
+            f"📊 Takliflarni ko'rish: `/takliflarim`",
             parse_mode="Markdown",
         )
     else:
@@ -108,14 +114,161 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
         )
 
 
+# ── /kanal [@ yoki id orqali majburiy kanal va guruhlar] ───────────
+@router.message(Command("kanal", "kanallar", "channel", "channels", ignore_case=True))
+async def cmd_kanal(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split()
+
+    # 1. /kanal (argumentlarsiz) — hozirgi majburiy kanallar ro'yxati
+    if len(parts) == 1:
+        channels = await db.get_mandatory_channels(message.chat.id)
+        if not channels:
+            await message.reply(
+                "📢 **Guruhda hozircha majburiy kanallar o'rnatilmagan.**\n\n"
+                "A'zolar guruhda yozishlari uchun homiy kanal yoki guruh qo'shish:\n"
+                "• `/kanal @kanal_username`\n"
+                "• `/kanal -1001234567890` (Kanal/guruh ID si)\n"
+                "• `/kanal https://t.me/kanal_nomi`\n"
+                "• Maxsus havola bilan: `/kanal -1001234567890 https://t.me/+AbCdEf`\n\n"
+                "ℹ️ *Kanal qo'shilgach, a'zolar unga a'zo bo'lmaguncha (yoki ariza yubormaguncha) guruhga yuborgan xabarlari avtomatik o'chiriladi.*",
+                parse_mode="Markdown",
+            )
+            return
+
+        text = f"📢 **'{message.chat.title}' guruhining majburiy kanallari ro'yxati:**\n\n"
+        for idx, ch in enumerate(channels, 1):
+            title = ch.get("title") or ch.get("channel_id")
+            chid = ch.get("channel_id")
+            link = ch.get("invite_link") or (f"https://t.me/{chid.lstrip('@')}" if str(chid).startswith("@") else "")
+            if link:
+                text += f"{idx}. **[{title}]({link})** (`{chid}`)\n"
+            else:
+                text += f"{idx}. **{title}** (`{chid}`)\n"
+
+        text += (
+            f"\n📊 Jami: **{len(channels)}** ta kanal\n\n"
+            "➕ **Yana kanal qo'shish:** `/kanal @kanal_nomi`\n"
+            "➖ **Kanalni o'chirish:** `/kanal ochir @kanal_nomi`\n"
+            "🗑 **Barchasini tozalash:** `/kanal tozalash`"
+        )
+        await message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
+        return
+
+    sub_cmd = parts[1].strip().lower()
+
+    # 2. Barchasini tozalash: /kanal tozalash
+    if sub_cmd in ("tozalash", "clear", "hammasini_ochir"):
+        await db.clear_mandatory_channels(message.chat.id)
+        await message.reply(
+            "🗑 **Guruhning barcha majburiy kanallari muvaffaqiyatli tozalandi!**\n"
+            "Endi a'zolar kanallarga a'zo bo'lmasdan ham erkin yoza oladi.",
+            parse_mode="Markdown",
+        )
+        return
+
+    # 3. Muayyan kanalni o'chirish: /kanal ochir @kanalim
+    if sub_cmd in ("ochir", "del", "delete", "remove", "ochirish"):
+        if len(parts) < 3:
+            await message.reply("⚠️ Qaysi kanalni o'chirmoqchisiz?\nMasalan: `/kanal ochir @kanalim`", parse_mode="Markdown")
+            return
+        target_ch = parts[2].strip()
+        removed = await db.remove_mandatory_channel(message.chat.id, target_ch)
+        if removed:
+            await message.reply(f"✅ **{target_ch}** majburiy kanallar ro'yxatidan o'chirildi!", parse_mode="Markdown")
+        else:
+            await message.reply(f"❌ **{target_ch}** ro'yxatda topilmadi.", parse_mode="Markdown")
+        return
+
+    # 4. Yangi kanal qo'shish: /kanal @kanalim yoki /kanal -100...
+    raw_input = parts[1].strip()
+    custom_invite_link = parts[2].strip() if len(parts) > 2 and parts[2].startswith("http") else ""
+
+    chat_target: int | str = raw_input
+    # Link kiritilgan bo'lsa username ajratib olish
+    if "t.me/" in raw_input and not raw_input.startswith("https://t.me/+"):
+        username = raw_input.split("t.me/")[1].split("/")[0].split("?")[0]
+        chat_target = f"@{username}"
+    elif raw_input.startswith("-100") or (raw_input.startswith("-") and raw_input[1:].isdigit()):
+        chat_target = int(raw_input)
+
+    status_msg = await message.reply("⏳ Kanal ma'lumotlari tekshirilmoqda...")
+
+    try:
+        chat_obj = await bot.get_chat(chat_target)
+        channel_id = f"@{chat_obj.username}" if chat_obj.username else str(chat_obj.id)
+        title = chat_obj.title or channel_id
+
+        invite_link = custom_invite_link
+        if not invite_link:
+            if chat_obj.username:
+                invite_link = f"https://t.me/{chat_obj.username}"
+            elif getattr(chat_obj, "invite_link", None):
+                invite_link = chat_obj.invite_link
+            else:
+                try:
+                    invite_link = await bot.export_chat_invite_link(chat_obj.id)
+                except Exception:
+                    invite_link = f"https://t.me/c/{str(chat_obj.id).replace('-100', '')}"
+
+        # Bot ushbu kanalda adminmi?
+        bot_is_admin = False
+        try:
+            me = await bot.get_me()
+            cm = await bot.get_chat_member(chat_obj.id, me.id)
+            bot_is_admin = cm.status in ("creator", "administrator")
+        except Exception:
+            bot_is_admin = False
+
+        # Bazaga saqlash
+        await db.add_mandatory_channel(message.chat.id, channel_id, title=title, invite_link=invite_link)
+
+        admin_status_text = (
+            "✅ **Bot kanalda administrator ekanligi tasdiqlandi!** (A'zolik va arizalar avtomatik tekshiriladi)"
+            if bot_is_admin
+            else "⚠️ **DIQQAT (Muhim!):** Bot ushbu kanalda administrator emas!\n"
+                 "Bot a'zolikni va arizalarni (tasdiqlashlarni) tekshira olishi uchun botni ushbu kanalga **Administrator (Admin)** qilib tayinlashingiz shart!"
+        )
+
+        await status_msg.edit_text(
+            f"🎉 **Majburiy kanal muvaffaqiyatli qo'shildi!**\n\n"
+            f"📢 **Kanal:** [{title}]({invite_link}) (`{channel_id}`)\n\n"
+            f"{admin_status_text}\n\n"
+            f"📌 Endi guruh a'zolari ushbu kanalga a'zo bo'lmaguncha (yoki ariza yubormaguncha) guruhda yoza olishmaydi. Yuborgan xabarlari o'chiriladi.",
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        channel_id = str(raw_input)
+        title = channel_id
+        invite_link = custom_invite_link or (f"https://t.me/{channel_id.lstrip('@')}" if channel_id.startswith("@") else "")
+
+        await db.add_mandatory_channel(message.chat.id, channel_id, title=title, invite_link=invite_link)
+
+        await status_msg.edit_text(
+            f"⚠️ **Kanal ro'yxatga qo'shildi:** `{channel_id}`\n\n"
+            f"❗ **Eslatma:** Bot kanal a'zolarini va yuborilgan arizalarni tekshira olishi uchun botni ushbu kanal/guruhga **Administrator** qilib qo'shishingiz shart!",
+            parse_mode="Markdown",
+        )
+
+
 # ── /ogohlantir [@ id yoki relp] ────────────────────────────────────
-@router.message(Command("ogohlantir", "ogohlantirish", "warn"))
+@router.message(Command("ogohlantir", "ogohlantirish", "warn", ignore_case=True))
 async def cmd_warn(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -169,13 +322,14 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
 
 
 # ── /chekla [ relp 10m|2h|1d] ──────────────────────────────────────
-@router.message(Command("chekla", "yopish", "mute"))
+@router.message(Command("chekla", "yopish", "mute", ignore_case=True))
 async def cmd_mute(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -230,13 +384,14 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
 
 
 # ── /hayda [bloklash @ id yoki relp] ─────────────────────────────────
-@router.message(Command("hayda", "haydash", "ban"))
+@router.message(Command("hayda", "haydash", "ban", ignore_case=True))
 async def cmd_ban(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -272,13 +427,14 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
 
 
 # ── /kechir [blokdan ochish @ id yoki rel] ───────────────────────────
-@router.message(Command("kechir", "unban", "och", "ochish", "qaytish"))
+@router.message(Command("kechir", "unban", "och", "ochish", "qaytish", ignore_case=True))
 async def cmd_unban_and_unmute(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -326,13 +482,14 @@ async def cmd_unban_and_unmute(message: Message, bot: Bot) -> None:
 
 
 # ── /tozala [Xabarlarni tozalashi] ─────────────────────────────────
-@router.message(Command("tozala", "tozalash", "clear"))
+@router.message(Command("tozala", "tozalash", "clear", ignore_case=True))
 async def cmd_clear(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -393,6 +550,18 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                text=f"🔄 Forward xabarlar: {mark(group.get('antiforward_enabled', 1))}",
+                callback_data="toggle_antiforward",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"📢 Majburiy kanallar: {mark(group.get('channels_enabled', 1))}",
+                callback_data="toggle_channels",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text=inv_text,
                 callback_data="toggle_invites",
             )
@@ -414,13 +583,14 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-@router.message(Command("sozlamalar", "settings"))
+@router.message(Command("sozlamalar", "settings", ignore_case=True))
 async def cmd_settings(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Sozlamalar faqat guruhlarda adminlar uchun ochiladi.")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -465,13 +635,14 @@ async def callback_refresh_settings(call: CallbackQuery, bot: Bot) -> None:
 
 
 # ── /yangiqoida [matn avtomatik quyishilishi kerak va admin uzi tahrirlashi mumkin] ──
-@router.message(Command("yangiqoida", "setrules"))
+@router.message(Command("yangiqoida", "setrules", ignore_case=True))
 async def cmd_setrules(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
@@ -503,18 +674,27 @@ async def cmd_setrules(message: Message, bot: Bot) -> None:
     )
 
 
+async def auto_delete_msg(msg: Message, delay: int = 5) -> None:
+    await asyncio.sleep(delay)
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+
+
 # ── /elon [har qanday xabar fayl bulishi mumkin guruhga qadab quyishi kerak] ──
-@router.message(Command("elon", "broadcast"))
+@router.message(Command("elon", "broadcast", "pin", "qada", ignore_case=True))
 async def cmd_broadcast(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ E'lon berish faqat guruhlarda ishlaydi!")
         return
 
-    if not await is_admin(bot, message.chat.id, message.from_user.id):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
-    # 1. Agar biror xabar yoki faylga Reply qilingan bo'lsa
+    # 1. Agar biror xabar yoki faylga Reply qilingan bo'lsa — USHA XABARNI PIN QILISH
     if message.reply_to_message:
         target_msg = message.reply_to_message
         try:
@@ -523,7 +703,7 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
                 message_id=target_msg.message_id,
                 notify=True,
             )
-            # Adminning /elon buyruq xabarini o'chirish
+            # Adminning /elon buyruq xabarini chat toza turishi uchun o'chirish
             try:
                 await message.delete()
             except Exception:
@@ -531,13 +711,19 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
 
             notify = await bot.send_message(
                 chat_id=message.chat.id,
-                text="📢 **E'lon muvaffaqiyatli qadab qo'yildi!** 📌",
+                text="📌 **Xabar muvaffaqiyatli qadab qo'yildi!**",
+                reply_to_message_id=target_msg.message_id,
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_message(notify, 5))
+            asyncio.create_task(auto_delete_msg(notify, 5))
             return
         except Exception as e:
-            await message.reply(f"❌ Xabarni qadashda xatolik yuz berdi: {e}\n(Bot adminligini va 'Pin messages' huquqi borligini tekshiring).")
+            await message.reply(
+                f"❌ **Xabarni qadab bo'lmadi!**\n\n"
+                f"Sabab: `{e}`\n\n"
+                f"💡 **Yechim:** Bot guruhda **Administrator (Admin)** bo'lishi va unga **'Xabarlarni qadash' (Pin messages)** huquqi berilgan bo'lishi kerak!",
+                parse_mode="Markdown",
+            )
             return
 
     # 2. Agar matn bilan yuborilgan bo'lsa (/elon matn)
@@ -568,21 +754,22 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text="📢 **Faylli e'lon qadab qo'yildi!** 📌",
+                reply_to_message_id=message.message_id,
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_message(notify, 5))
+            asyncio.create_task(auto_delete_msg(notify, 5))
             return
         except Exception as e:
             await message.reply(f"❌ Faylni qadashda xatolik: {e}")
             return
 
-    # Agar hech narsa ko'rsatilmagan bo'lsa — yo'riqnoma ko'rsatamiz
+    # Agar hech narsa ko'rsatilmagan va reply qilinmagan bo'lsa — yo'riqnoma ko'rsatamiz
     await message.reply(
-        "📢 **E'lon yuborish va qadash (Pin):**\n\n"
-        "• **Matnli e'lon:** `/elon [E'lon matni]`\n"
-        "• **Fayl, rasm yoki videoni e'lon qilish:**\n"
-        "  Har qanday fayl yoki xabarga **Reply** qilib `/elon` deb yozing!\n"
-        "• **Yoki fayl yuborayotganda** izohiga `/elon` deb yozing.\n\n"
-        "📌 Bot e'lonni barcha a'zolar ko'rishi uchun avtomatik tarzda guruhga qadab qo'yadi!",
+        "📢 **Xabarni qadash (PIN / E'LON):**\n\n"
+        "• **Istalgan xabarni qadash uchun:**\n"
+        "  Har qanday xabar, rasm, video yoki faylga **Reply** qilib `/elon` deb yozing!\n\n"
+        "• **Yangi matnli e'lon yozib qadash:**\n"
+        "  `/elon [E'lon matni]`\n\n"
+        "📌 Bot xabarni barcha a'zolar ko'rishi uchun darhol guruhga qadab (pin) beradi!",
         parse_mode="Markdown",
     )

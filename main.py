@@ -31,6 +31,7 @@ from handlers import (
     faq_router,
     common_router,
     moderation_router,
+    bot_admin_router,
 )
 from services.scheduler import setup_scheduler
 
@@ -76,6 +77,7 @@ async def start_render_health_server() -> web.AppRunner | None:
 async def set_bot_commands_and_bio(bot: Bot) -> None:
     """Telegram menyusida buyruqlarni o'rnatish va Bio/Description sozlash."""
     all_group_commands = [
+        BotCommand(command="start", description="🤖 Bot imkoniyatlari va ma'lumotlar"),
         BotCommand(command="odam", description="👥 Majburiy a'zo talabi (/odam 5)"),
         BotCommand(command="takliflarim", description="📊 A'zo takliflari (reply qilib)"),
         BotCommand(command="reyting", description="🏆 Faol a'zolar reytingi (TOP-10)"),
@@ -90,13 +92,13 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="yangiqoida", description="📝 Yangi guruh qoidasi belgilash"),
         BotCommand(command="elon", description="📢 E'lon va fayllarni qadash (pin)"),
         BotCommand(command="taklifchilar", description="🌟 Ko'p odam qo'shganlar (TOP-10)"),
-        BotCommand(command="savollar", description="❓ Ko'p beriladigan savollar"),
         BotCommand(command="yordam", description="📖 Barcha buyruqlar qo'llanmasi"),
     ]
 
     private_commands = [
-        BotCommand(command="start", description="Botni ishga tushirish"),
+        BotCommand(command="start", description="Bot imkoniyatlari va ishga tushirish"),
         BotCommand(command="yordam", description="Qo'llanma va buyruqlar"),
+        BotCommand(command="panel", description="👑 Super Admin boshqaruv paneli"),
     ]
 
     try:
@@ -110,7 +112,7 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
 
     try:
         await bot.set_my_short_description(
-            short_description="Guruh himoyachisi, majburiy a'zo talabi (/odam) va guruh nazorat boti!"
+            short_description="Guruh himoyachisi, APK virus filtri, majburiy a'zo (/odam) va guruh nazorat boti!"
         )
     except Exception as e:
         logger.warning(f"Qisqa bio o'rnatishda: {e}")
@@ -119,6 +121,8 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         desc = (
             "Guruhchi — Telegram guruhlarini professional himoya qilish va boshqarish boti!\n\n"
             "Asosiy imkoniyatlar:\n"
+            "• APK virus fayllarini avtomatik o'chirish\n"
+            "• Forward qilingan xabarlarni o'chirish\n"
             "• Majburiy a'zo talabi (/odam 5)\n"
             "• Qo'shilgan a'zolarni sanash (/takliflarim)\n"
             "• Reklama va spam xabarlarni o'chirish\n"
@@ -159,6 +163,7 @@ async def main() -> None:
     await set_bot_commands_and_bio(bot)
 
     # Routerlarni to'g'ri ketma-ketlikda ulash
+    dp.include_router(bot_admin_router)
     dp.include_router(admin_router)
     dp.include_router(events_router)
     dp.include_router(stats_router)
@@ -186,4 +191,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Dastur to'xtatildi.")
-

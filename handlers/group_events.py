@@ -137,17 +137,28 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
-                        InlineKeyboardButton(text="📜 Qoidalar", callback_data="btn_rules"),
-                        InlineKeyboardButton(text="❓ FAQ / Savollar", callback_data="btn_faq"),
+                        InlineKeyboardButton(text="📜 Guruh Qoidalari", callback_data="btn_rules"),
+                        InlineKeyboardButton(text="🏆 Faollar Reytingi", callback_data="btn_show_rating"),
                     ],
                 ]
             )
 
+            min_req = group.get("min_invites", 0)
+            rules_hint = (
+                f"\n\n⚠️ **DIQQAT:** Guruhda xabar yozish uchun kamida **{min_req}** ta do'stingizni qo'shishingiz kerak!"
+                if min_req > 0
+                else ""
+            )
+
             welcome_text = (
-                f"👋 Assalomu alaykum, {mention}!\n\n"
-                f"**{group_title}**ga xush kelibsiz! 🎉\n\n"
-                f"📌 Iltimos, guruh qoidalariga rioya qilgan holda muloqot qiling.\n"
-                f"Savollaringiz bo'lsa, pastdagi tugmalardan foydalanishingiz mumkin."
+                f"╔══════════════════════════╗\n"
+                f"   ✨ **XUSH KELIBSIZ!** ✨\n"
+                f"╚══════════════════════════╝\n\n"
+                f"👋 **Assalomu alaykum, {mention}!**\n\n"
+                f"🎉 **«{group_title}»** guruhimizga xush kelibsiz!\n"
+                f"Sizni safimizda ko'rib turganimizdan g'oyat mamnunmiz! 🤝😊\n\n"
+                f"💬 *Guruhimizda samimiy va do'stona muloqot qilishingizni tilaymiz!*{rules_hint}\n\n"
+                f"Qoidalar bilan tanishish uchun quyidagi tugmani bosing 👇"
             )
 
             welcome_msg = await message.answer(
@@ -196,21 +207,25 @@ async def cb_rules(call: CallbackQuery) -> None:
             "📜 **Standart guruh qoidalari:**\n\n"
             "1. Bir-biringizni hurmat qiling, haqorat va so'kinish taqiqlanadi.\n"
             "2. Begona havolalar (linklar) va reklama tarqatish qat'iyan man etiladi.\n"
-            "3. Spam va behayo materiallar yubormang.\n"
-            "4. Qoidalarni buzganlar ogohlantiriladi (/ogohlantir) yoki cheklanadi (/chekla, /hayda)."
+            "3. Boshqa kanallardan xabarlarni uzatish (forward) taqiqlanadi.\n"
+            "4. Har qanday APK (.apk) fayllar va viruslar man etiladi.\n"
+            "5. Qoidalarni buzganlar ogohlantiriladi (/ogohlantir) yoki cheklanadi (/chekla, /hayda)."
         )
     await call.answer()
     await call.message.reply(rules, parse_mode="Markdown")
 
 
-@router.callback_query(F.data == "btn_faq")
-async def cb_faq(call: CallbackQuery) -> None:
-    faqs = await db.get_all_faqs(call.message.chat.id)
-    if not faqs:
-        await call.answer("Guruhda hali tez-tez beriladigan savollar kiritilmagan.", show_alert=True)
+@router.callback_query(F.data == "btn_show_rating")
+async def cb_show_rating(call: CallbackQuery) -> None:
+    top_users = await db.get_top_active_users(call.message.chat.id, limit=5)
+    if not top_users:
+        await call.answer("Guruhda hali xabarlar statistikasi mavjud emas.", show_alert=True)
         return
-    text = "❓ **Guruhda ko'p so'raladigan savollar va javoblar:**\n\n"
-    for item in faqs:
-        text += f"🔹 **Savol:** {item['keyword']}\n💬 **Javob:** {item['answer']}\n\n"
+    text = "🏆 **Guruhning eng faol a'zolari (TOP-5):**\n\n"
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    for i, u in enumerate(top_users):
+        name = u.get("full_name") or "Foydalanuvchi"
+        cnt = u.get("message_count", 0)
+        text += f"{medals[i]} **{name}** — {cnt} ta xabar\n"
     await call.answer()
     await call.message.reply(text, parse_mode="Markdown")

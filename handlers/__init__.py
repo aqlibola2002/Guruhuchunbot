@@ -4,6 +4,7 @@ from .stats import router as stats_router
 from .faq import router as faq_router
 from .common import router as common_router
 from .moderation import router as moderation_router
+from .bot_admin import router as bot_admin_router
 
 __all__ = [
     "admin_router",
@@ -12,4 +13,5 @@ __all__ = [
     "faq_router",
     "common_router",
     "moderation_router",
+    "bot_admin_router",
 ]
