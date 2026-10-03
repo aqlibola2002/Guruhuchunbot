@@ -96,7 +96,70 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             username=message.from_user.username,
         )
 
-    # ❗ AGAR FOYDALANUVCHI GURUH ADMINI BO'LSA — ASLO TEGINILMAYDI VA XABAR YUBORILMAYDI
+    # 🔒 VIRUS FAYL TEKSHIRUVI — ADMINLAR UCHUN HAM ISHLAYDI
+    # (Botning o'chira olish huquqini oldindan tekshirish)
+    bot_can_delete_msg_early = await can_bot_delete(bot, message.chat.id)
+    bot_info_early = await bot.get_me()
+    admin_req_kb_early = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🛡 Botga Adminlik berish",
+                    url=f"https://t.me/{bot_info_early.username}?startgroup=true&admin=delete_messages+restrict_members+pin_messages",
+                )
+            ]
+        ]
+    )
+
+    is_dangerous_file_early = False
+    file_name_early = ""
+    if message.document:
+        doc_name = (message.document.file_name or "").lower()
+        doc_mime = (message.document.mime_type or "").lower()
+        if doc_name.endswith((".apk", ".xapk", ".apks")) or "android.package-archive" in doc_mime:
+            is_dangerous_file_early = True
+            file_name_early = message.document.file_name or "APK fayl"
+
+    if is_dangerous_file_early:
+        sender_name = message.from_user.full_name if message.from_user else "Foydalanuvchi"
+        sender_id = message.from_user.id if message.from_user else None
+        mention = f"[{sender_name}](tg://user?id={sender_id})" if sender_id else sender_name
+        sender_type = "👑 Admin" if user_is_admin else "👤 A'zo"
+
+        if bot_can_delete_msg_early:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"🚨 **XAVFSIZLIK: Zararli APK fayl aniqlandi va o'chirildi!** 🛡\n\n"
+                    f"🚫 {mention} ({sender_type}), guruhda **APK (.apk)** fayl yuborish qat'iyan taqiqlangan!\n"
+                    f"📁 Fayl: `{file_name_early}`\n\n"
+                    f"⚠️ **Ogohlantirish:** Hozirda Telegramda tarqalayotgan APK fayllar aksariyat hollarda profilingiz, SMS-kodlaringiz va bank kartangizni o'g'irlaydigan **troyan viruslari** hisoblanadi!\n"
+                    f"Guruh xavfsizligini ta'minlash maqsadida ushbu fayl darhol o'chirildi."
+                ),
+                parse_mode="Markdown",
+            )
+            asyncio.create_task(auto_delete_notification(notify, 10))
+            return
+        else:
+            await message.reply(
+                text=(
+                    f"🚨 **DIQQAT: Guruhga xavfli APK fayl yuborildi!**\n\n"
+                    f"{sender_type}: {mention}\n"
+                    f"📁 Fayl: `{file_name_early}`\n\n"
+                    f"⚠️ **Barcha a'zolar diqqatiga:** Ushbu faylni aslo ochmang va telefoningizga o'rnatmang! Bu kartangiz va profilingizni o'g'irlaydigan virus bo'lishi mumkin!\n\n"
+                    f"🤖 **Administratorlar:** Bot bu kabi xavfli viruslarni avtomatik o'chirib tashlashi uchun unga guruhda **Administrator** huquqini bering!"
+                ),
+                parse_mode="Markdown",
+                reply_markup=admin_req_kb_early,
+            )
+            return
+
+    # ❗ AGAR FOYDALANUVCHI GURUH ADMINI BO'LSA — BOSHQA TEKSHIRUVLARGA TEGINILMAYDI
     if user_is_admin:
         return
 
@@ -177,50 +240,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         ]
     )
 
-    # 2. Xavfli APK (Virus/Troyan) fayllarini aniqlash va darhol o'chirish
-    is_dangerous_file = False
-    file_name = ""
-    if message.document:
-        doc_name = (message.document.file_name or "").lower()
-        doc_mime = (message.document.mime_type or "").lower()
-        if doc_name.endswith((".apk", ".xapk", ".apks")) or "android.package-archive" in doc_mime:
-            is_dangerous_file = True
-            file_name = message.document.file_name or "APK fayl"
-
-    if is_dangerous_file:
-        mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})" if message.from_user else "Foydalanuvchi"
-        if bot_can_delete_msg:
-            try:
-                await message.delete()
-            except Exception:
-                pass
-
-            notify = await bot.send_message(
-                chat_id=message.chat.id,
-                text=(
-                    f"🚨 **XAVFSIZLIK: Zararli APK fayl aniqlandi va o'chirildi!** 🛡\n\n"
-                    f"🚫 {mention}, guruhda **APK (.apk)** fayl yuborish qat'iyan taqiqlangan!\n"
-                    f"📁 Fayl: `{file_name}`\n\n"
-                    f"⚠️ **Ogohlantirish:** Hozirda Telegramda tarqalayotgan APK fayllar aksariyat hollarda profilingiz, SMS-kodlaringiz va bank kartangizni o'g'irlaydigan **troyan viruslari** hisoblanadi!\n"
-                    f"Guruh xavfsizligini ta'minlash maqsadida ushbu fayl darhol o'chirildi."
-                ),
-                parse_mode="Markdown",
-            )
-            asyncio.create_task(auto_delete_notification(notify, 10))
-            return
-        else:
-            await message.reply(
-                text=(
-                    f"🚨 **DIQQAT: Guruhga xavfli APK fayl yuborildi!**\n\n"
-                    f"👤 Yuboruvchi: {mention}\n"
-                    f"📁 Fayl: `{file_name}`\n\n"
-                    f"⚠️ **Barcha a'zolar diqqatiga:** Ushbu faylni aslo ochmang va telefoningizga o'rnatmang! Bu kartangiz va profilingizni o'g'irlaydigan virus bo'lishi mumkin!\n\n"
-                    f"🤖 **Administratorlar:** Bot bu kabi xavfli viruslarni avtomatik o'chirib tashlashi uchun unga guruhda **Administrator** huquqini bering!"
-                ),
-                parse_mode="Markdown",
-                reply_markup=admin_req_kb,
-            )
-            return
+    # 2. Xavfli APK (Virus/Troyan) fayllarini aniqlash — bu yerga kelganda foydalanuvchi admin EMAS
+    # (Adminlar uchun tekshiruv yuqorida — admin bypass'dan oldin o'tkazildi)
 
     # 3. Forward (Uzatilgan) xabarlarni nazorat qilish va o'chirish (Anti-Forward)
     if group.get("antiforward_enabled", 1) == 1 and is_forwarded_message(message):

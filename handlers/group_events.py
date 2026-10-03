@@ -205,12 +205,28 @@ async def cb_rules(call: CallbackQuery) -> None:
     rules = await db.get_group_rules(call.message.chat.id)
     if not rules:
         rules = (
-            "📜 **Standart guruh qoidalari:**\n\n"
-            "1. Bir-biringizni hurmat qiling, haqorat va so'kinish taqiqlanadi.\n"
-            "2. Begona havolalar (linklar) va reklama tarqatish qat'iyan man etiladi.\n"
-            "3. Boshqa kanallardan xabarlarni uzatish (forward) taqiqlanadi.\n"
-            "4. Har qanday APK (.apk) fayllar va viruslar man etiladi.\n"
-            "5. Qoidalarni buzganlar ogohlantiriladi (/ogohlantir) yoki cheklanadi (/chekla, /hayda)."
+            "📜 **GURUH QOIDALARI**\n\n"
+            "1️⃣ **HURMAT** — Har bir a'zoga hurmat bilan muomala qiling. "
+            "Haqorat, kamsitish, millat yoki dinga tegishli so'zlar qat'iyan taqiqlanadi.\n\n"
+            "2️⃣ **SPAM & REKLAMA** — Ruxsatsiz reklama, havola (link), kanal va guruh targ'iboti taqiqlanadi. "
+            "Qoidabuzarlar darhol guruhdan chiqariladi.\n\n"
+            "3️⃣ **SIYOSAT & ZIDDIYAT** — Siyosiy tortishuvlar, urush targ'iboti va provokatsion xabarlar taqiqlanadi.\n\n"
+            "4️⃣ **YOLG'ON AXBOROT** — Tasdiqlanmagan yangilik, soxta skrinshotlar va yolg'on ma'lumot "
+            "tarqatish taqiqlanadi. Manbani tekshiring!\n\n"
+            "5️⃣ **APK & ZARARLI FAYLLAR** — Har qanday .apk, .exe va noma'lum fayl yuborish taqiqlanadi. "
+            "Telegram orqali tarqalayotgan viruslardan ehtiyot bo'ling!\n\n"
+            "6️⃣ **SHAXSIY MA'LUMOT** — Boshqalarning telefon raqami, manzili yoki shaxsiy ma'lumotlarini "
+            "ruxsatsiz tarqatish (doxing) taqiqlanadi.\n\n"
+            "7️⃣ **FIRIBGARLIK (SCAM)** — \"Pul ishlash\", \"investitsiya\", \"kripto\" bahonasida aldash "
+            "urinishlari darhol ban bilan jazolanadi.\n\n"
+            "8️⃣ **FORWARD XABARLAR** — Boshqa kanal va guruhlardan xabarlarni forward qilish taqiqlanadi.\n\n"
+            "9️⃣ **18+ KONTENT** — Voyaga etmaganlar uchun noma'qul, zo'ravonlik va shok materiallar mutlaqo taqiqlanadi.\n\n"
+            "🔟 **DEEPFAKE & AI SOXTA KONTENT** — AI yordamida yaratilgan soxta surat/video tarqatish taqiqlanadi.\n\n"
+            "⚠️ **OGOHLANTIRISH TIZIMI:**\n"
+            "• 1-ogohlantirish: Xabar o'chiriladi\n"
+            "• 2-ogohlantirish: 24 soat sukut (yozish taqiqlanadi)\n"
+            "• 3-ogohlantirish: Guruhdan chiqarish\n\n"
+            "✅ *Guruhda yozish uchun qoidalarni qabul qilgan deb hisoblanasiz!*"
         )
     await call.answer()
     await call.message.reply(rules, parse_mode="Markdown")

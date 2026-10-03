@@ -47,6 +47,132 @@ async def auto_delete_message(msg: Message, delay: int = AUTO_DELETE_NOTIFICATIO
         pass
 
 
+# ── /admin [Guruh admin paneliga tezkor kirish] ──────────────────────
+@router.message(Command("admin", ignore_case=True))
+async def cmd_admin_info(message: Message, bot: Bot) -> None:
+    """Guruh adminlari uchun: bot holati va tezkor boshqaruv paneli."""
+    if message.chat.type in ("private",):
+        await message.reply(
+            "⚠️ Bu buyruq faqat guruhlarda ishlaydi!\n\n"
+            "Guruhingizga qo'shib, `/admin` buyrug'ini yuboring."
+        )
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+
+    def s(val: int) -> str:
+        return "✅" if val == 1 else "❌"
+
+    min_inv = group.get("min_invites", 0)
+    inv_status = f"✅ ({min_inv} ta)" if (group.get("invites_enabled", 1) == 1 and min_inv > 0) else "❌"
+
+    # Bot huquqlarini tekshirish
+    from filters.admin_filter import can_bot_delete
+    bot_can_del = await can_bot_delete(bot, message.chat.id)
+    bot_status = "✅ Admin (o'chira oladi)" if bot_can_del else "⚠️ Admin emas (o'chira olmaydi!)"
+
+    panel_text = (
+        f"🛡 **'{message.chat.title}' — Bot Holati va Boshqaruv:**\n\n"
+        f"🤖 **Bot huquqi:** {bot_status}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚙️ **Yoqilgan himoyalar:**\n"
+        f"{s(group.get('antilink_enabled', 1))} 🔗 Begona linklar bloklanishi\n"
+        f"{s(group.get('antispam_enabled', 1))} 🚫 Spam / Reklama tozalash\n"
+        f"{s(group.get('antiforward_enabled', 1))} 🔄 Forward xabarlar bloklanishi\n"
+        f"{s(group.get('channels_enabled', 1))} 📢 Majburiy kanallar tekshiruvi\n"
+        f"{inv_status} 👥 Majburiy a'zo qo'shish talabi\n"
+        f"{s(group.get('welcome_enabled', 1))} 👋 Yangi a'zolarni kutib olish\n"
+        f"{s(group.get('scheduled_enabled', 1))} ⏰ Rejali xabarlar\n"
+        f"✅ 🦠 APK virus filtri (DOIM faol — o'chirib bo'lmaydi)\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 **Tezkor buyruqlar:**\n"
+        f"• `/sozlamalar` — himoya sozlamalarini boshqarish\n"
+        f"• `/ogohlantir` — a'zoga ogohlantirish berish\n"
+        f"• `/chekla 10m` — a'zoni vaqtincha cheklash\n"
+        f"• `/hayda` — a'zoni guruhdan chiqarish\n"
+        f"• `/kechir` — a'zoni blokdan ochish\n"
+        f"• `/tozala 20` — oxirgi xabarlarni tozalash\n"
+        f"• `/elon [matn]` — e'lon yuborish va qadash\n"
+        f"• `/odam 5` — majburiy a'zo talabini o'rnatish\n"
+        f"• `/kanal @nomi` — majburiy kanal qo'shish\n"
+        f"• `/yangiqoida [matn]` — guruh qoidasini yangilash"
+    )
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin"),
+            ],
+            [
+                InlineKeyboardButton(text="📜 Qoidalar", callback_data="show_rules_admin"),
+                InlineKeyboardButton(text="📊 Statistika", callback_data="show_stats_admin"),
+            ],
+        ]
+    )
+
+    await message.reply(panel_text, parse_mode="Markdown", reply_markup=kb)
+
+
+@router.callback_query(F.data == "open_settings_from_admin")
+async def cb_open_settings_from_admin(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar uchun!", show_alert=True)
+        return
+    group = await db.get_or_create_group(call.message.chat.id)
+    kb = get_settings_keyboard(group)
+    await call.message.reply(
+        f"⚙️ **'{call.message.chat.title}' guruhi himoya sozlamalari:**\n\n"
+        f"Quyidagi tugmalar orqali xavfsizlik va nazorat funksiyalarini boshqaring:",
+        reply_markup=kb,
+        parse_mode="Markdown",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data == "show_stats_admin")
+async def cb_show_stats_admin(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar uchun!", show_alert=True)
+        return
+    from database.db import db as _db
+    stats = await _db.get_group_stats(call.message.chat.id)
+    await call.message.reply(
+        f"📊 **Guruh statistikasi:**\n\n"
+        f"• 💬 Jami xabarlar: **{stats.get('total_messages', 0)}** ta\n"
+        f"• 👤 A'zolar soni: **{stats.get('total_members', 0)}** ta\n"
+        f"• ➕ Taklif qilingan: **{stats.get('total_invites', 0)}** ta\n"
+        f"• ⚠️ Ogohlantirishlar: **{stats.get('total_warns', 0)}** ta",
+        parse_mode="Markdown",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data == "show_rules_admin")
+async def cb_show_rules_admin(call: CallbackQuery) -> None:
+    if not call.message:
+        return
+    rules = await db.get_group_rules(call.message.chat.id)
+    if rules:
+        await call.message.reply(f"📜 **Guruh qoidalari:**\n\n{rules}", parse_mode="Markdown")
+    else:
+        await call.message.reply(
+            "📜 Guruh qoidalari hali o'rnatilmagan.\n\n"
+            "Admin sifatida qoidalarni o'rnatish uchun:\n"
+            "`/yangiqoida [qoidalar matni]`",
+            parse_mode="Markdown",
+        )
+    await call.answer()
+
+
 # ── /odam [har qanday son quyish mumkin] ───────────────────────────
 @router.message(Command("odam", "setinvites", ignore_case=True))
 async def cmd_odam(message: Message, bot: Bot) -> None:
