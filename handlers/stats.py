@@ -10,7 +10,7 @@ router = Router(name="stats")
 
 
 # ── /statistika (Guruh statistikasi va holati) ────────────────────
-@router.message(Command("statistika", "stats"))
+@router.message(Command("statistika", "stats", ignore_case=True))
 async def cmd_stats(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("📊 Guruh statistikasini ko'rish uchun ushbu buyruqni guruhingizda yuboring!")
@@ -54,7 +54,7 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
 
 
 # ── /reyting (Eng faol yozuvchilar reytingi) ────────────────────────
-@router.message(Command("reyting", "top"))
+@router.message(Command("reyting", "top", ignore_case=True))
 async def cmd_top(message: Message) -> None:
     if message.chat.type in ("private",):
         await message.reply("🏆 Faollik reytingini ko'rish uchun ushbu buyruqni guruhingizda yuboring!")
@@ -82,7 +82,7 @@ async def cmd_top(message: Message) -> None:
 
 
 # ── /takliflarim (A'zo qo'shganini hisoblash) ───────────────────────
-@router.message(Command("takliflarim", "myinvites"))
+@router.message(Command("takliflarim", "myinvites", ignore_case=True))
 async def cmd_takliflarim(message: Message) -> None:
     if message.chat.type in ("private",):
         await message.reply(
@@ -116,10 +116,13 @@ async def cmd_takliflarim(message: Message) -> None:
         return
 
     # O'zining takliflari statistikasi
-    if not message.from_user:
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        await message.reply("Takliflarni hisoblash uchun profilingizdan yozing.")
         return
 
-    user_invites = await db.get_user_invites(message.chat.id, message.from_user.id)
+    user_name = message.from_user.full_name if (message.from_user and message.from_user.full_name) else "Foydalanuvchi"
+    user_invites = await db.get_user_invites(message.chat.id, user_id)
     status_text = ""
     if min_inv > 0:
         if user_invites >= min_inv:
@@ -129,7 +132,7 @@ async def cmd_takliflarim(message: Message) -> None:
             status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stingizni taklif qilishingiz kerak!"
 
     await message.reply(
-        f"👥 **{message.from_user.full_name}**, sizning takliflaringiz statistikasi:\n\n"
+        f"👥 **{user_name}**, sizning takliflaringiz statistikasi:\n\n"
         f"➕ Siz qo'shgan a'zolar soni: **{user_invites}** ta\n"
         f"🎯 Guruh talabi: **{min_inv}** ta{status_text}\n\n"
         f"💡 *Boshqa a'zoning takliflarini bilish uchun uning xabariga Reply qilib `/takliflarim` deb yozing!*",
@@ -138,7 +141,7 @@ async def cmd_takliflarim(message: Message) -> None:
 
 
 # ── /taklifchilar (Eng ko'p taklif qilganlar) ──────────────────────
-@router.message(Command("taklifchilar", "topinvites", "toptaklif"))
+@router.message(Command("taklifchilar", "topinvites", "toptaklif", ignore_case=True))
 async def cmd_topinvites(message: Message) -> None:
     if message.chat.type in ("private",):
         await message.reply("🌟 Taklifchilar reytingini ko'rish uchun ushbu buyruqni guruhingizda yuboring!")

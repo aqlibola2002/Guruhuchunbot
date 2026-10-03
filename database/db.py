@@ -20,6 +20,8 @@ class Database:
                     rules TEXT DEFAULT '',
                     antilink_enabled INTEGER DEFAULT 1,
                     antispam_enabled INTEGER DEFAULT 1,
+                    antiforward_enabled INTEGER DEFAULT 1,
+                    channels_enabled INTEGER DEFAULT 1,
                     welcome_enabled INTEGER DEFAULT 1,
                     ai_enabled INTEGER DEFAULT 1,
                     scheduled_enabled INTEGER DEFAULT 1,
@@ -71,6 +73,23 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (chat_id, invited_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS mandatory_channels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_chat_id INTEGER,
+                    channel_id TEXT,
+                    title TEXT DEFAULT '',
+                    invite_link TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(group_chat_id, channel_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS join_requests (
+                    user_id INTEGER,
+                    channel_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, channel_id)
+                );
                 """
             )
             # Mavjud bazalar uchun yangi ustunlarni tekshirib qo'shish
@@ -80,6 +99,14 @@ class Database:
                 pass
             try:
                 await conn.execute("ALTER TABLE groups ADD COLUMN invites_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN antiforward_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN channels_enabled INTEGER DEFAULT 1")
             except Exception:
                 pass
             await conn.commit()
@@ -114,7 +141,15 @@ class Database:
             return dict(row)
 
     async def update_group_setting(self, chat_id: int, setting_name: str, value: int) -> None:
-        allowed = {"antilink_enabled", "antispam_enabled", "welcome_enabled", "scheduled_enabled", "invites_enabled"}
+        allowed = {
+            "antilink_enabled",
+            "antispam_enabled",
+            "welcome_enabled",
+            "scheduled_enabled",
+            "invites_enabled",
+            "antiforward_enabled",
+            "channels_enabled",
+        }
         if setting_name not in allowed:
             return
         async with aiosqlite.connect(self.db_path) as conn:
@@ -126,10 +161,16 @@ class Database:
 
     async def set_min_invites(self, chat_id: int, count: int) -> None:
         async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute(
-                "UPDATE groups SET min_invites = ? WHERE chat_id = ?",
-                (count, chat_id),
-            )
+            if count > 0:
+                await conn.execute(
+                    "UPDATE groups SET min_invites = ?, invites_enabled = 1 WHERE chat_id = ?",
+                    (count, chat_id),
+                )
+            else:
+                await conn.execute(
+                    "UPDATE groups SET min_invites = 0 WHERE chat_id = ?",
+                    (chat_id,),
+                )
             await conn.commit()
 
     async def set_group_rules(self, chat_id: int, rules: str) -> None:
@@ -316,6 +357,85 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
+    # ── Majburiy kanallar (Mandatory Channels) ─────────────────────────
+    async def add_mandatory_channel(
+        self, group_chat_id: int, channel_id: str, title: str = "", invite_link: str = ""
+    ) -> bool:
+        clean_ch = str(channel_id).strip()
+        async with aiosqlite.connect(self.db_path) as conn:
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO mandatory_channels (group_chat_id, channel_id, title, invite_link)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(group_chat_id, channel_id) DO UPDATE SET
+                        title = excluded.title,
+                        invite_link = excluded.invite_link
+                    """,
+                    (group_chat_id, clean_ch, title, invite_link),
+                )
+                await conn.commit()
+                return True
+            except Exception:
+                return False
+
+    async def get_mandatory_channels(self, group_chat_id: int) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT * FROM mandatory_channels WHERE group_chat_id = ? ORDER BY id ASC",
+                (group_chat_id,),
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    async def remove_mandatory_channel(self, group_chat_id: int, channel_id: str) -> bool:
+        clean_ch = str(channel_id).strip().lower()
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                """
+                DELETE FROM mandatory_channels 
+                WHERE group_chat_id = ? AND (LOWER(channel_id) = ? OR LOWER(channel_id) = ? OR channel_id = ?)
+                """,
+                (group_chat_id, clean_ch, f"@{clean_ch.lstrip('@')}".lower(), clean_ch.lstrip("@")),
+            )
+            await conn.commit()
+            return cursor.rowcount > 0
+
+    async def clear_mandatory_channels(self, group_chat_id: int) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "DELETE FROM mandatory_channels WHERE group_chat_id = ?",
+                (group_chat_id,),
+            )
+            await conn.commit()
+
+    # ── Arizalar (Join Requests) ──────────────────────────────────────
+    async def record_join_request(self, user_id: int, channel_id: str) -> None:
+        clean_id = str(channel_id).strip().lower()
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                """
+                INSERT INTO join_requests (user_id, channel_id)
+                VALUES (?, ?)
+                ON CONFLICT(user_id, channel_id) DO NOTHING
+                """,
+                (user_id, clean_id),
+            )
+            await conn.commit()
+
+    async def has_join_request(self, user_id: int, channel_id: str) -> bool:
+        clean_id = str(channel_id).strip().lower()
+        variants = [clean_id, clean_id.lstrip("@"), f"@{clean_id.lstrip('@')}"]
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                f"SELECT 1 FROM join_requests WHERE user_id = ? AND channel_id IN ({','.join(['?']*len(variants))}) LIMIT 1",
+                (user_id, *variants),
+            )
+            row = await cursor.fetchone()
+            return bool(row)
+
+
     # ── Ogohlantirishlar (Warns) ───────────────────────────────────────
     async def add_warn(self, chat_id: int, user_id: int, reason: str = "") -> int:
         today = datetime.date.today().isoformat()
@@ -425,6 +545,50 @@ class Database:
             return {
                 "total_users": user_count or 0,
                 "total_messages": total_msgs or 0,
+                "today_messages": today_msgs,
+                "today_warns": today_warns,
+                "today_mutes": today_mutes,
+                "today_bans": today_bans,
+            }
+
+    async def get_global_stats(self) -> dict[str, Any]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("SELECT COUNT(*) FROM groups")
+            row = await cursor.fetchone()
+            total_groups = row[0] if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(DISTINCT user_id) FROM users")
+            row = await cursor.fetchone()
+            total_users = row[0] if row else 0
+
+            cursor = await conn.execute("SELECT SUM(message_count) FROM users")
+            row = await cursor.fetchone()
+            total_messages = row[0] if row and row[0] else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) FROM user_invites")
+            row = await cursor.fetchone()
+            total_invites = row[0] if row else 0
+
+            today = datetime.date.today().isoformat()
+            cursor = await conn.execute(
+                """
+                SELECT SUM(messages_count), SUM(warns_given), SUM(mutes_given), SUM(bans_given)
+                FROM daily_stats
+                WHERE date = ?
+                """,
+                (today,),
+            )
+            row = await cursor.fetchone()
+            today_msgs = row[0] if row and row[0] else 0
+            today_warns = row[1] if row and row[1] else 0
+            today_mutes = row[2] if row and row[2] else 0
+            today_bans = row[3] if row and row[3] else 0
+
+            return {
+                "total_groups": total_groups,
+                "total_users": total_users,
+                "total_messages": total_messages,
+                "total_invites": total_invites,
                 "today_messages": today_msgs,
                 "today_warns": today_warns,
                 "today_mutes": today_mutes,
