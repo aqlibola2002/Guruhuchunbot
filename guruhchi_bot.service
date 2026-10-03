@@ -1,0 +1,15 @@
+[Unit]
+Description=Guruhchi Telegram Bot Xizmati
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/guruh_bot
+ExecStart=/root/guruh_bot/venv/bin/python main.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

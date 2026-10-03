@@ -1,0 +1,1 @@
+# AI xizmati o'chirildi

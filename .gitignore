@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.py[cod]
+*.db
+data/*.db
+data/
+.venv/
+venv/
+.idea/
+.vscode/
+test.py
+Guruh uchun bot/

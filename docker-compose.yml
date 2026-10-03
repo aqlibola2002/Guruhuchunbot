@@ -1,0 +1,9 @@
+services:
+  guruhchi_bot:
+    build: .
+    container_name: guruhchi_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
