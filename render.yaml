@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: guruhchi-uz-bot
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        value: "8781024332"
+      - key: DB_PATH
+        value: data/guruhchi.db
+      - key: PYTHONUNBUFFERED
+        value: "1"
