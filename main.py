@@ -110,26 +110,29 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
 
     try:
         await bot.set_my_short_description(
-            short_description="🛡 Guruh himoyachisi, majburiy a'zo qo'shtirish (/odam) va boshqaruv boti!"
+            short_description="Guruh himoyachisi, majburiy a'zo talabi (/odam) va guruh nazorat boti!"
         )
-        await bot.set_my_description(
-            description=(
-                "🛡 Guruhchi — Telegram guruhlarini professional himoya qilish va boshqarish boti!\n\n"
-                "📌 Asosiy imkoniyatlar:\n"
-                "👥 Majburiy a'zo qo'shtirish (/odam 5)\n"
-                "📊 Qo'shilgan a'zolarni hisoblash (/takliflarim, /taklifchilar)\n"
-                "🛡 Reklama va spam xabarlarni avtomatik o'chirish\n"
-                "🔗 Begona Telegram havolalarini bloklash\n"
-                "🧹 Guruh xabarlarini tozalash (/tozala 20)\n"
-                "⚠️ Qoidabuzarlarni jazolash (/ogohlantir, /chekla, /hayda, /kechir)\n"
-                "👋 Yangi a'zolarni kutib olish\n"
-                "📜 Guruh qoidalari va avto-javoblar (/qoidalar, /yangiqoida)\n\n"
-                "Meni guruhingizga qo'shib, Administrator huquqlarini bering!"
-            )
+    except Exception as e:
+        logger.warning(f"Qisqa bio o'rnatishda: {e}")
+
+    try:
+        desc = (
+            "Guruhchi — Telegram guruhlarini professional himoya qilish va boshqarish boti!\n\n"
+            "Asosiy imkoniyatlar:\n"
+            "• Majburiy a'zo talabi (/odam 5)\n"
+            "• Qo'shilgan a'zolarni sanash (/takliflarim)\n"
+            "• Reklama va spam xabarlarni o'chirish\n"
+            "• Begona havolalarni (linklar) bloklash\n"
+            "• Xabarlarni tozalash (/tozala 20)\n"
+            "• Jazo choralari (/ogohlantir, /chekla, /hayda, /kechir)\n"
+            "• Statistika va reyting (/statistika, /reyting)\n"
+            "• Guruh qoidalari (/qoidalar, /yangiqoida)\n\n"
+            "Meni guruhingizga qo'shib, Admin huquqini bering!"
         )
+        await bot.set_my_description(description=desc)
         logger.info("Bot bio va tavsifi muvaffaqiyatli yangilandi ✅")
     except Exception as e:
-        logger.warning(f"Bio o'rnatishda xatolik: {e}")
+        logger.warning(f"Tavsif o'rnatishda: {e}")
 
 
 async def main() -> None:
