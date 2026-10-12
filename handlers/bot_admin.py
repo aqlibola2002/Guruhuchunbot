@@ -248,13 +248,14 @@ async def cmd_group_info(message: Message, bot: Bot) -> None:
         min_inv = group_db.get("min_invites", 0)
 
         invite_link = chat.invite_link or "Yo'q"
+        bot_perm_text = "✅ Administrator" if is_bot_adm else "❌ Oddiy a'zo"
 
         text = (
             f"ℹ️ **GURUH MA'LUMOTLARI:**\n\n"
             f"📌 **Nomi:** {chat.title}\n"
             f"🆔 **ID:** `{chat.id}`\n"
             f"👥 **A'zolar soni:** {members_count} ta\n"
-            f"🤖 **Bot huquqi:** {'✅ Administrator' if is_bot_adm else '❌ Oddiy a'zo'}\n"
+            f"🤖 **Bot huquqi:** {bot_perm_text}\n"
             f"👥 **Majburiy taklif:** {min_inv} ta\n"
             f"🔗 **Havola:** {invite_link}\n\n"
             f"Chiqarib yuborish: `/chiq {cid}`"
