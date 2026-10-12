@@ -46,8 +46,8 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
         f"• 🛡️ Antispam va reklama filtri: {mark(group.get('antispam_enabled', 1))}\n"
         f"• 👥 Majburiy a'zo talabi (/odam): {inv_req_text}\n"
         f"• 👋 Yangi a'zolarni kutib olish: {mark(group.get('welcome_enabled', 1))}\n\n"
-        f"🏆 Faol a'zolar: `/reyting`\n"
-        f"🌟 Eng ko'p taklif qilganlar: `/taklifchilar`"
+        f"🏆 Faol a'zolar reytingi: `/reyting`\n"
+        f"👥 Takliflaringizni bilish: `/takliflarim`"
     )
 
     await message.reply(text, parse_mode="Markdown")
@@ -140,29 +140,3 @@ async def cmd_takliflarim(message: Message) -> None:
     )
 
 
-# ── /taklifchilar (Eng ko'p taklif qilganlar) ──────────────────────
-@router.message(Command("taklifchilar", "topinvites", "toptaklif", ignore_case=True))
-async def cmd_topinvites(message: Message) -> None:
-    if message.chat.type in ("private",):
-        await message.reply("🌟 Taklifchilar reytingini ko'rish uchun ushbu buyruqni guruhingizda yuboring!")
-        return
-
-    top_inviters = await db.get_top_inviters(message.chat.id, limit=10)
-    if not top_inviters:
-        await message.reply(
-            f"ℹ️ **'{message.chat.title}'** guruhida hali a'zolar taklif qilish statistikasi mavjud emas.\n"
-            "A'zolar odam qo'shishni boshlagach, TOP-10 ro'yxat shakllanadi!"
-        )
-        return
-
-    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    text = f"🌟 **'{message.chat.title}' — Eng ko'p odam qo'shganlar (TOP-10):**\n\n"
-
-    for idx, u in enumerate(top_inviters):
-        medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
-        name = u["full_name"] or "Foydalanuvchi"
-        username_part = f" (@{u['username']})" if u["username"] else ""
-        text += f"{medal} **{name}**{username_part} — **{u['invite_count']}** ta a'zo\n"
-
-    text += "\n👥 *Guruhimizga do'stlaringizni qo'shib, guruh rivojiga hissa qo'shing!*"
-    await message.reply(text, parse_mode="Markdown")

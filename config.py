@@ -29,7 +29,8 @@ DB_PATH: Path = DATA_DIR / "group_bot.db"
 # Guruh sozlamalari (Standart)
 MAX_WARNS: int = int(os.getenv("MAX_WARNS", "3"))
 DEFAULT_MUTE_SECONDS: int = int(os.getenv("DEFAULT_MUTE_SECONDS", "3600"))  # 1 soat
-AUTO_DELETE_NOTIFICATION_DELAY: int = 7  # Bildirishnomalarni 7 soniyada o'chirish
+AUTO_DELETE_NOTIFICATION_DELAY: int = 60  # Bot xabarlari 1 daqiqa (60 soniya) turadi
+APK_WARNING_NOTIFICATION_DELAY: int = 7200  # APK fayl ogohlantirishi 2 soat (7200 soniya) turadi
 
 # Taqiqlangan spam so'zlar ro'yxati
 SPAM_KEYWORDS: list[str] = [
@@ -41,7 +42,20 @@ SPAM_KEYWORDS: list[str] = [
     "oyiga million", "oson pul", "referal", "bonus oling"
 ]
 
+# Taqiqlangan so'kinish va haqorat so'zlari ro'yxati
+PROFANITY_KEYWORDS: list[str] = [
+    "jalap", "jallap", "zhalap", "dalbayob", "dalbayop", "dolbayob", "dolbaeb",
+    "siktir", "sikaman", "sikay", "sikish", "sikey", "sikayotgan",
+    "qotoq", "qo'toq", "qotoqmisan", "qotoqbosh",
+    "gandon", "gondon", "pidar", "pidaraz", "pederast",
+    "onangni sik", "onangdi sik", "onangni s", "onangni ami",
+    "haromi", "itvachcha", "molcha", "chmo", "sukaa",
+    "blyat", "blyad", "nahuy", "huy", "pizda", "yeblet", "mudak",
+    "shlyuxa", "pozor", "geyporn"
+]
+
 # Ruxsat etilgan havolalar (agar bo'lsa, bloklanmaydi)
 WHITELISTED_LINKS: list[str] = [
     # masalan: "t.me/sizning_kanalingiz"
 ]
+

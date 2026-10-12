@@ -78,20 +78,23 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
     """Telegram menyusida buyruqlarni o'rnatish va Bio/Description sozlash."""
     all_group_commands = [
         BotCommand(command="start", description="🤖 Bot imkoniyatlari va ma'lumotlar"),
-        BotCommand(command="odam", description="👥 Majburiy a'zo talabi (/odam 5)"),
-        BotCommand(command="takliflarim", description="📊 A'zo takliflari (reply qilib)"),
-        BotCommand(command="reyting", description="🏆 Faol a'zolar reytingi (TOP-10)"),
-        BotCommand(command="statistika", description="📈 Guruh statistikasi va holati"),
-        BotCommand(command="qoidalar", description="📜 Guruh qoidalarini ko'rish"),
+        BotCommand(command="admin", description="🛡 Bot holati va admin boshqaruv paneli"),
+        BotCommand(command="sozlamalar", description="⚙️ Guruh himoya sozlamalari"),
         BotCommand(command="ogohlantir", description="⚠️ Ogohlantirish (@ id yoki reply)"),
         BotCommand(command="chekla", description="🔇 Yozishni cheklash (10m|2h|1d)"),
         BotCommand(command="hayda", description="🚫 Guruhdan chiqarish (Ban)"),
         BotCommand(command="kechir", description="🔓 Blokdan va cheklovdan ochish"),
-        BotCommand(command="tozala", description="🧹 Xabarlarni tozalash (/tozala 20)"),
-        BotCommand(command="sozlamalar", description="⚙️ Guruh himoya sozlamalari"),
-        BotCommand(command="yangiqoida", description="📝 Yangi guruh qoidasi belgilash"),
+        BotCommand(command="tozala", description="🧹 Xabarlarni tozalash (/tozala 20 yoki reply)"),
         BotCommand(command="elon", description="📢 E'lon va fayllarni qadash (pin)"),
-        BotCommand(command="taklifchilar", description="🌟 Ko'p odam qo'shganlar (TOP-10)"),
+        BotCommand(command="odam", description="👥 Majburiy a'zo talabi (/odam 5)"),
+        BotCommand(command="nol", description="0️⃣ A'zo takliflarini 0 qilish (reply)"),
+        BotCommand(command="kanal", description="📡 Majburiy kanal qo'shish/ko'rish"),
+        BotCommand(command="setwelcome", description="✏️ Maxsus salomlashish matnini sozlash"),
+        BotCommand(command="yangiqoida", description="📝 Yangi guruh qoidasi belgilash"),
+        BotCommand(command="qoidalar", description="📜 Guruh qoidalarini ko'rish"),
+        BotCommand(command="takliflarim", description="📊 Siz qo'shgan a'zolar soni"),
+        BotCommand(command="reyting", description="🏆 Faol a'zolar reytingi (TOP-10)"),
+        BotCommand(command="statistika", description="📈 Guruh statistikasi va holati"),
         BotCommand(command="yordam", description="📖 Barcha buyruqlar qo'llanmasi"),
     ]
 
@@ -99,6 +102,10 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="start", description="Bot imkoniyatlari va ishga tushirish"),
         BotCommand(command="yordam", description="Qo'llanma va buyruqlar"),
         BotCommand(command="panel", description="👑 Super Admin boshqaruv paneli"),
+        BotCommand(command="backup", description="💾 Baza zaxirasini yuklab olish (.db)"),
+        BotCommand(command="send", description="📢 Barcha guruhlarga xabar yuborish"),
+        BotCommand(command="send_users", description="👤 Barcha foydalanuvchilarga xabar yuborish"),
+        BotCommand(command="send_all", description="🌐 Hammaga xabar yuborish"),
     ]
 
     try:
@@ -112,26 +119,29 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
 
     try:
         await bot.set_my_short_description(
-            short_description="Guruh himoyachisi, APK virus filtri, majburiy a'zo (/odam) va guruh nazorat boti!"
+            short_description="🛡 Guruh himoyachisi: APK virus filtri, spam/link/forward blokchi, majburiy a'zo va admin boshqaruv boti!"
         )
     except Exception as e:
         logger.warning(f"Qisqa bio o'rnatishda: {e}")
 
     try:
         desc = (
-            "Guruhchi — Telegram guruhlarini professional himoya qilish va boshqarish boti!\n\n"
-            "Asosiy imkoniyatlar:\n"
-            "• APK virus fayllarini avtomatik o'chirish\n"
-            "• Forward qilingan xabarlarni o'chirish\n"
-            "• Majburiy a'zo talabi (/odam 5)\n"
-            "• Qo'shilgan a'zolarni sanash (/takliflarim)\n"
-            "• Reklama va spam xabarlarni o'chirish\n"
-            "• Begona havolalarni (linklar) bloklash\n"
-            "• Xabarlarni tozalash (/tozala 20)\n"
-            "• Jazo choralari (/ogohlantir, /chekla, /hayda, /kechir)\n"
-            "• Statistika va reyting (/statistika, /reyting)\n"
-            "• Guruh qoidalari (/qoidalar, /yangiqoida)\n\n"
-            "Meni guruhingizga qo'shib, Admin huquqini bering!"
+            "🛡 Guruhchi — Telegram guruhlarini professional himoya qilish va boshqarish boti!\n\n"
+            "⚡️ Bot nima qila oladi?\n\n"
+            "🦠 APK virus fayllarini avtomatik o'chirish (adminlar ham!)\n"
+            "🔄 Forward qilingan xabarlarni o'chirish\n"
+            "🔗 Begona havola (link) va reklamalarni bloklash\n"
+            "🚫 Spam xabarlarni tozalash va jazolash\n"
+            "👥 Majburiy a'zo talabi (/odam 5)\n"
+            "➕ Qo'shilgan a'zolarni sanash (/takliflarim)\n"
+            "⚠️ Jazo choralari (/ogohlantir, /chekla, /hayda, /kechir)\n"
+            "🧹 Xabarlarni tozalash (/tozala 20)\n"
+            "📢 Majburiy kanallar qo'shish (/kanal)\n"
+            "📊 Statistika va reyting (/statistika, /reyting)\n"
+            "📜 Guruh qoidalari (/qoidalar, /yangiqoida)\n"
+            "📣 E'lon va qadash (/elon)\n"
+            "🛡 Admin boshqaruv paneli (/admin)\n\n"
+            "Meni guruhingizga qo'shib, Administrator huquqini bering!"
         )
         await bot.set_my_description(description=desc)
         logger.info("Bot bio va tavsifi muvaffaqiyatli yangilandi ✅")
@@ -191,3 +201,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Dastur to'xtatildi.")
+
