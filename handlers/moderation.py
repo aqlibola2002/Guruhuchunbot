@@ -4,12 +4,13 @@ import asyncio
 import re
 from datetime import datetime, timedelta, timezone
 
-from aiogram import Router, Bot
+from aiogram import Router, Bot, F
 from aiogram.types import (
     Message,
     ChatPermissions,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    CallbackQuery,
 )
 
 from config import (
