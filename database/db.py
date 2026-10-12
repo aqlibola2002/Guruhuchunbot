@@ -90,6 +90,15 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (user_id, channel_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    message_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (chat_id, message_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(chat_id, user_id);
                 """
             )
             # Mavjud bazalar uchun yangi ustunlarni tekshirib qo'shish
@@ -107,6 +116,22 @@ class Database:
                 pass
             try:
                 await conn.execute("ALTER TABLE groups ADD COLUMN channels_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN profanity_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN block_stickers INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN block_voice INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN custom_welcome TEXT DEFAULT ''")
             except Exception:
                 pass
             await conn.commit()
@@ -149,6 +174,9 @@ class Database:
             "invites_enabled",
             "antiforward_enabled",
             "channels_enabled",
+            "profanity_enabled",
+            "block_stickers",
+            "block_voice",
         }
         if setting_name not in allowed:
             return
@@ -192,6 +220,34 @@ class Database:
                 return row["rules"]
             return ""
 
+    async def set_custom_welcome(self, chat_id: int, text: str) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE groups SET custom_welcome = ? WHERE chat_id = ?",
+                (text.strip(), chat_id),
+            )
+            await conn.commit()
+
+    async def get_custom_welcome(self, chat_id: int) -> str:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT custom_welcome FROM groups WHERE chat_id = ?", (chat_id,)
+            )
+            row = await cursor.fetchone()
+            if row and row["custom_welcome"]:
+                return row["custom_welcome"]
+            return ""
+
+    async def reset_custom_welcome(self, chat_id: int) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE groups SET custom_welcome = '' WHERE chat_id = ?",
+                (chat_id,),
+            )
+            await conn.commit()
+
+
     async def get_all_active_groups(self) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
@@ -230,6 +286,50 @@ class Database:
                 (today, chat_id),
             )
             await conn.commit()
+
+    async def save_chat_message(self, chat_id: int, user_id: int, message_id: int) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            try:
+                await conn.execute(
+                    """
+                    INSERT OR IGNORE INTO chat_messages (chat_id, user_id, message_id)
+                    VALUES (?, ?, ?)
+                    """,
+                    (chat_id, user_id, message_id),
+                )
+                await conn.commit()
+            except Exception:
+                pass
+
+    async def get_user_chat_messages(
+        self, chat_id: int, user_id: int, limit: int = 100
+    ) -> list[int]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                """
+                SELECT message_id FROM chat_messages
+                WHERE chat_id = ? AND user_id = ?
+                ORDER BY message_id DESC
+                LIMIT ?
+                """,
+                (chat_id, user_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+    async def delete_saved_chat_messages(self, chat_id: int, message_ids: list[int]) -> None:
+        if not message_ids:
+            return
+        async with aiosqlite.connect(self.db_path) as conn:
+            try:
+                placeholders = ",".join("?" for _ in message_ids)
+                await conn.execute(
+                    f"DELETE FROM chat_messages WHERE chat_id = ? AND message_id IN ({placeholders})",
+                    (chat_id, *message_ids),
+                )
+                await conn.commit()
+            except Exception:
+                pass
 
     async def get_top_users(self, chat_id: int, limit: int = 10) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self.db_path) as conn:
@@ -334,6 +434,29 @@ class Database:
             )
             row = await cursor.fetchone()
             return row[0] if row else 0
+
+    async def reset_user_invites(self, chat_id: int, user_id: int) -> int:
+        """Foydalanuvchining guruhdagi barcha takliflarini (invites) o'chirib, nolga tushiradi."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "DELETE FROM user_invites WHERE chat_id = ? AND inviter_id = ?",
+                (chat_id, user_id),
+            )
+            deleted_count = cursor.rowcount
+            await conn.commit()
+            return deleted_count
+
+    async def reset_all_group_invites(self, chat_id: int) -> int:
+        """Guruhdagi barcha foydalanuvchilarning takliflarini nolga tushiradi."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "DELETE FROM user_invites WHERE chat_id = ?",
+                (chat_id,),
+            )
+            deleted_count = cursor.rowcount
+            await conn.commit()
+            return deleted_count
+
 
     async def get_top_inviters(self, chat_id: int, limit: int = 10) -> list[dict[str, Any]]:
         """Guruhga eng ko'p a'zo qo'shgan TOP a'zolar ro'yxati."""

@@ -49,7 +49,7 @@ async def send_group_intro(bot: Bot, chat_id: int, chat_title: str) -> None:
         "Men — **Guruhchi** botiman! Guruhda tartib saqlash, spamlardan tozalash va a'zolar sonini faol ko'paytirishda sizga xizmat qilaman! 🛡🤖\n\n"
         "✨ **Mening asosiy imkoniyatlarim:**\n"
         "• 👥 **Majburiy a'zo talabi:** `/odam 5` (a'zolar guruhda yozishlari uchun 5 ta odam qo'shishi shart qilinadi)\n"
-        "• 📊 **A'zolarni hisoblash:** `/takliflarim` va `/taklifchilar` (TOP-10 taklifchilar)\n"
+        "• 📊 **A'zolarni hisoblash:** `/takliflarim` (har bir a'zo qo'shgan odamlar soni)\n"
         "• 🛡️ **Antispam & Antilink:** Reklama, kazino va begona linklarni avtomatik o'chirish\n"
         "• 🧹 **Guruhni tozalash:** `/tozala 20` (keraksiz xabarlarni tozalash)\n"
         "• ⚠️ **Jazo choralari:** `/ogohlantir`, `/chekla`, `/hayda`\n"
@@ -134,6 +134,7 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
         if group.get("welcome_enabled", 1) == 1:
             mention = f"[{new_user.full_name}](tg://user?id={new_user.id})"
             group_title = message.chat.title or "guruhimiz"
+            u_name = f"@{new_user.username}" if new_user.username else new_user.full_name
 
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -151,16 +152,29 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
                 else ""
             )
 
-            welcome_text = (
-                f"╔══════════════════════════╗\n"
-                f"   ✨ **XUSH KELIBSIZ!** ✨\n"
-                f"╚══════════════════════════╝\n\n"
-                f"👋 **Assalomu alaykum, {mention}!**\n\n"
-                f"🎉 **«{group_title}»** guruhimizga xush kelibsiz!\n"
-                f"Sizni safimizda ko'rib turganimizdan g'oyat mamnunmiz! 🤝😊\n\n"
-                f"💬 *Guruhimizda samimiy va do'stona muloqot qilishingizni tilaymiz!*{rules_hint}\n\n"
-                f"Qoidalar bilan tanishish uchun quyidagi tugmani bosing 👇"
-            )
+            custom_tpl = await db.get_custom_welcome(message.chat.id)
+            if custom_tpl:
+                welcome_text = (
+                    custom_tpl.replace("{name}", mention)
+                    .replace("{title}", group_title)
+                    .replace("{username}", u_name)
+                    .replace("{first_name}", new_user.first_name or "")
+                )
+                if "{rules}" in custom_tpl or "{qoidalar}" in custom_tpl:
+                    welcome_text = welcome_text.replace("{rules}", rules_hint).replace("{qoidalar}", rules_hint)
+                else:
+                    welcome_text += rules_hint
+            else:
+                welcome_text = (
+                    f"╔══════════════════════════╗\n"
+                    f"   ✨ **XUSH KELIBSIZ!** ✨\n"
+                    f"╚══════════════════════════╝\n\n"
+                    f"👋 **Assalomu alaykum, {mention}!**\n\n"
+                    f"🎉 **«{group_title}»** guruhimizga xush kelibsiz!\n"
+                    f"Sizni safimizda ko'rib turganimizdan g'oyat mamnunmiz! 🤝😊\n\n"
+                    f"💬 *Guruhimizda samimiy va do'stona muloqot qilishingizni tilaymiz!*{rules_hint}\n\n"
+                    f"Qoidalar bilan tanishish uchun quyidagi tugmani bosing 👇"
+                )
 
             welcome_msg = await message.answer(
                 text=welcome_text,

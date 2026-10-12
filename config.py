@@ -41,7 +41,20 @@ SPAM_KEYWORDS: list[str] = [
     "oyiga million", "oson pul", "referal", "bonus oling"
 ]
 
+# Taqiqlangan so'kinish va haqorat so'zlari ro'yxati
+PROFANITY_KEYWORDS: list[str] = [
+    "jalap", "jallap", "zhalap", "dalbayob", "dalbayop", "dolbayob", "dolbaeb",
+    "siktir", "sikaman", "sikay", "sikish", "sikey", "sikayotgan",
+    "qotoq", "qo'toq", "qotoqmisan", "qotoqbosh",
+    "gandon", "gondon", "pidar", "pidaraz", "pederast",
+    "onangni sik", "onangdi sik", "onangni s", "onangni ami",
+    "haromi", "itvachcha", "molcha", "chmo", "sukaa",
+    "blyat", "blyad", "nahuy", "huy", "pizda", "yeblet", "mudak",
+    "shlyuxa", "pozor", "geyporn"
+]
+
 # Ruxsat etilgan havolalar (agar bo'lsa, bloklanmaydi)
 WHITELISTED_LINKS: list[str] = [
     # masalan: "t.me/sizning_kanalingiz"
 ]
+

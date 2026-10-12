@@ -81,6 +81,9 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"🤖 **Bot huquqi:** {bot_status}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"⚙️ **Yoqilgan himoyalar:**\n"
+        f"{s(group.get('profanity_enabled', 1))} 🤬 So'kinish va haqorat filtri\n"
+        f"{'🚫' if group.get('block_stickers', 0) == 1 else '🟢'} 🎭 Stiker va GIF taqiqi\n"
+        f"{'🚫' if group.get('block_voice', 0) == 1 else '🟢'} 🎙 Ovozli va Video doira taqiqi\n"
         f"{s(group.get('antilink_enabled', 1))} 🔗 Begona linklar bloklanishi\n"
         f"{s(group.get('antispam_enabled', 1))} 🚫 Spam / Reklama tozalash\n"
         f"{s(group.get('antiforward_enabled', 1))} 🔄 Forward xabarlar bloklanishi\n"
@@ -92,6 +95,8 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 **Tezkor buyruqlar:**\n"
         f"• `/sozlamalar` — himoya sozlamalarini boshqarish\n"
+        f"• `/setwelcome [matn]` — maxsus salomnoma o'rnatish\n"
+        f"• `/kanal` — majburiy kanallarni boshqarish\n"
         f"• `/ogohlantir` — a'zoga ogohlantirish berish\n"
         f"• `/chekla 10m` — a'zoni vaqtincha cheklash\n"
         f"• `/hayda` — a'zoni guruhdan chiqarish\n"
@@ -99,7 +104,7 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"• `/tozala 20` — oxirgi xabarlarni tozalash\n"
         f"• `/elon [matn]` — e'lon yuborish va qadash\n"
         f"• `/odam 5` — majburiy a'zo talabini o'rnatish\n"
-        f"• `/kanal @nomi` — majburiy kanal qo'shish\n"
+        f"• `/nol` — a'zoning takliflarini 0 qilish (reply)\n"
         f"• `/yangiqoida [matn]` — guruh qoidasini yangilash"
     )
 
@@ -238,6 +243,97 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
             "🔓 **Majburiy a'zo qo'shish talabi o'chirildi!**\nEndi barcha a'zolar erkin yoza oladi.",
             parse_mode="Markdown",
         )
+
+
+# ── /nol [A'zo qo'shgan odamlarni nol qilish] ──────────────────────────
+@router.message(Command("nol", "resetinvites", "nolga", "taklifnol", ignore_case=True))
+async def cmd_reset_invites(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split()
+
+    # Agar barcha a'zolarning takliflarini birdaniga nol qilish so'ralsa: /nol all yoki /nol hammasi
+    if len(parts) > 1 and parts[1].lower() in ("all", "hammasi", "barchasi", "hamma"):
+        deleted = await db.reset_all_group_invites(message.chat.id)
+        group = await db.get_or_create_group(message.chat.id)
+        min_inv = group.get("min_invites", 0)
+        inv_note = (
+            f"\n\n⚠️ Guruhda yozish uchun kamida **{min_inv}** ta odam qo'shish talabi o'rnatilgan. "
+            f"Endi barcha a'zolar qaytadan odam qo'shishi shart!"
+            if min_inv > 0 and group.get("invites_enabled", 1) == 1
+            else ""
+        )
+        await message.reply(
+            f"0️⃣ **Guruhdagi barcha a'zolarning takliflari nolga tushirildi!**\n"
+            f"Jami o'chirilgan taklif qaydlari: **{deleted}** ta.{inv_note}\n\n"
+            f"👮‍♂️ Admin: {message.from_user.full_name}",
+            parse_mode="Markdown",
+        )
+        return
+
+    # Muayyan a'zoni reply yoki @username / ID orqali aniqlash
+    target = await resolve_target(message)
+    if target.error:
+        await message.reply(
+            "0️⃣ **A'zo takliflarini nol qilish (/nol):**\n\n"
+            "Foydalanuvchi guruhga qancha odam qo'shgan bo'lsa, uning hisobini 0 ga tushiradi.\n"
+            "Agar guruhda majburiy odam qo'shish talabi bo'lsa, u qaytadan odam qo'shishi kerak bo'ladi.\n\n"
+            "**Qanday ishlatiladi:**\n"
+            "• Foydalanuvchining xabariga **Reply** qilib: `/nol`\n"
+            "• Yoki `@username` orqali: `/nol @foydalanuvchi`\n"
+            "• Yoki Telegram **ID** orqali: `/nol 123456789`\n"
+            "• Barcha a'zolarnikini birdaniga nol qilish: `/nol hammasi`",
+            parse_mode="Markdown",
+        )
+        return
+
+    if target.user_id == bot.id:
+        await message.reply("🤖 Bot uchun takliflar hisoblanmaydi!")
+        return
+
+    # Oldingi takliflar sonini aniqlash
+    old_invites = await db.get_user_invites(message.chat.id, target.user_id)
+
+    # Bazadan takliflarni tozalash (0 qilish)
+    await db.reset_user_invites(message.chat.id, target.user_id)
+
+    # Guruhning majburiy taklif sozlamasini olish
+    group = await db.get_or_create_group(message.chat.id)
+    min_inv = group.get("min_invites", 0)
+    inv_enabled = group.get("invites_enabled", 1)
+
+    mention = f"[{target.full_name}](tg://user?id={target.user_id})"
+
+    target_is_admin = await is_admin(bot, message.chat.id, target.user_id)
+    if target_is_admin:
+        extra_note = (
+            "ℹ️ _Eslatma: Ushbu a'zo guruh admini bo'lganligi sababli, "
+            "unga majburiy a'zo qo'shish cheklovi ta'sir qilmaydi._"
+        )
+    elif inv_enabled == 1 and min_inv > 0:
+        extra_note = (
+            f"🚫 **Diqqat:** Guruhda yozish uchun kamida **{min_inv}** ta odam qo'shish talabi mavjud.\n"
+            f"Endi {mention} guruhda xabar yoza olishi uchun yana kamida **{min_inv}** ta yangi odam qo'shishi shart!"
+        )
+    else:
+        extra_note = "ℹ️ Ushbu a'zoning barcha takliflari 0 ga tushirildi."
+
+    await message.reply(
+        f"0️⃣ **Takliflar nolga tushirildi!**\n\n"
+        f"👤 **A'zo:** {mention}\n"
+        f"📊 **Oldingi qo'shgan odamlari:** **{old_invites}** ta\n"
+        f"🔄 **Hozirgi takliflar:** **0** ta\n\n"
+        f"{extra_note}\n\n"
+        f"👮‍♂️ Admin: {message.from_user.full_name}",
+        parse_mode="Markdown",
+    )
 
 
 # ── /kanal [@ yoki id orqali majburiy kanal va guruhlar] ───────────
@@ -607,7 +703,26 @@ async def cmd_unban_and_unmute(message: Message, bot: Bot) -> None:
     )
 
 
-# ── /tozala [Xabarlarni tozalashi] ─────────────────────────────────
+# Helper: xabarlarni guruhlab (chunk) tez va xavfsiz o'chirish
+async def delete_in_batches(bot: Bot, chat_id: int, msg_ids: list[int]) -> int:
+    deleted = 0
+    unique_ids = sorted(list(set(msg_ids)), reverse=True)
+    for i in range(0, len(unique_ids), 100):
+        chunk = unique_ids[i : i + 100]
+        try:
+            await bot.delete_messages(chat_id=chat_id, message_ids=chunk)
+            deleted += len(chunk)
+        except Exception:
+            for mid in chunk:
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=mid)
+                    deleted += 1
+                except Exception:
+                    pass
+    return deleted
+
+
+# ── /tozala [Xabarlarni tozalash: a'zoga reply qilib yoki son ko'rsatib] ──
 @router.message(Command("tozala", "tozalash", "clear", ignore_case=True))
 async def cmd_clear(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
@@ -619,38 +734,61 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
-    parts = (message.text or "").split()
-    count = 10
-    if len(parts) > 1 and parts[1].isdigit():
-        count = min(int(parts[1]), 100)
-
-    # Adminning o'z buyruq xabarini o'chirish
+    # Adminning o'z /tozala buyruq xabarini o'chirish
     try:
         await message.delete()
     except Exception:
         pass
 
-    deleted = 0
+    parts = (message.text or "").split()
+    custom_count: int | None = None
+    if len(parts) > 1 and parts[1].isdigit():
+        custom_count = min(int(parts[1]), 200)
+
+    # 1. AGAR BIROR A'ZONING XABARIGA REPLY QILIB YOZILGAN BO'LSA
+    if message.reply_to_message:
+        target_user = message.reply_to_message.from_user
+        target_name = target_user.full_name if target_user else "Foydalanuvchi"
+        target_id = target_user.id if target_user else None
+
+        limit = custom_count if custom_count else 100
+        msg_ids = set()
+
+        # Reply qilingan xabarning o'zini qo'shish
+        msg_ids.add(message.reply_to_message.message_id)
+
+        # Bazadan ushbu a'zoning barcha xabarlarini olish
+        if target_id:
+            saved_ids = await db.get_user_chat_messages(message.chat.id, target_id, limit=limit)
+            msg_ids.update(saved_ids)
+
+        deleted = await delete_in_batches(bot, message.chat.id, list(msg_ids))
+        if target_id:
+            await db.delete_saved_chat_messages(message.chat.id, list(msg_ids))
+
+        notify = await bot.send_message(
+            chat_id=message.chat.id,
+            text=f"🧹 **{target_name}** ning **{deleted} ta xabari** muvaffaqiyatli tozalandi!",
+            parse_mode="Markdown",
+        )
+        asyncio.create_task(auto_delete_message(notify, 5))
+        return
+
+    # 2. AGAR REPLY QILINMAGAN BO'LSA — GURUHNING OXIRGI XABARLARINI TOZALASH
+    count = custom_count if custom_count else 10
     current_msg_id = message.message_id
     msg_ids = [current_msg_id - i for i in range(1, count + 1) if current_msg_id - i > 0]
 
-    try:
-        await bot.delete_messages(chat_id=message.chat.id, message_ids=msg_ids)
-        deleted = len(msg_ids)
-    except Exception:
-        for mid in msg_ids:
-            try:
-                await bot.delete_message(chat_id=message.chat.id, message_id=mid)
-                deleted += 1
-            except Exception:
-                pass
+    deleted = await delete_in_batches(bot, message.chat.id, msg_ids)
+    await db.delete_saved_chat_messages(message.chat.id, msg_ids)
 
     notify = await bot.send_message(
         chat_id=message.chat.id,
-        text=f"🧹 **{deleted} ta xabar muvaffaqiyatli tozalandi!**",
+        text=f"🧹 Guruhdagi **{deleted} ta xabar** muvaffaqiyatli tozalandi!",
         parse_mode="Markdown",
     )
-    asyncio.create_task(auto_delete_message(notify, 4))
+    asyncio.create_task(auto_delete_message(notify, 5))
+
 
 
 # ── /sozlamalar [Himoya sozlamalarini boshqarish] ───────────────────
@@ -658,10 +796,31 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
     def mark(val: int) -> str:
         return "✅ Yoqilgan" if val == 1 else "❌ O'chirilgan"
 
+    def mark_block(val: int) -> str:
+        return "🚫 Taqiqlangan" if val == 1 else "🟢 Ruxsat"
+
     min_inv = group.get("min_invites", 0)
     inv_text = f"👥 Majburiy a'zo ({min_inv} ta): {mark(group.get('invites_enabled', 1))}"
 
     kb = [
+        [
+            InlineKeyboardButton(
+                text=f"🤬 So'kinish filtri: {mark(group.get('profanity_enabled', 1))}",
+                callback_data="toggle_profanity",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🎭 Stiker va GIF: {mark_block(group.get('block_stickers', 0))}",
+                callback_data="toggle_block_stickers",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🎙 Ovozli va Video doira: {mark_block(group.get('block_voice', 0))}",
+                callback_data="toggle_block_voice",
+            )
+        ],
         [
             InlineKeyboardButton(
                 text=f"🔗 Begona linklar: {mark(group.get('antilink_enabled', 1))}",
@@ -739,9 +898,16 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
         await call.answer("❌ Bu sozlamalarni faqat adminlar o'zgartirishi mumkin!", show_alert=True)
         return
 
-    setting_key = call.data.replace("toggle_", "") + "_enabled"
+    raw = call.data.replace("toggle_", "")
     group = await db.get_or_create_group(call.message.chat.id)
-    current_val = group.get(setting_key, 1)
+
+    if raw in ("block_stickers", "block_voice"):
+        setting_key = raw
+        current_val = group.get(setting_key, 0)
+    else:
+        setting_key = raw + "_enabled"
+        current_val = group.get(setting_key, 1)
+
     new_val = 0 if current_val == 1 else 1
 
     await db.update_group_setting(call.message.chat.id, setting_key, new_val)
@@ -758,6 +924,91 @@ async def callback_refresh_settings(call: CallbackQuery, bot: Bot) -> None:
     group = await db.get_or_create_group(call.message.chat.id)
     await call.message.edit_reply_markup(reply_markup=get_settings_keyboard(group))
     await call.answer("Yangilandi! 🔄")
+
+
+# ── /setwelcome [Maxsus salomlashish matni o'rnatish] ───────────────
+@router.message(Command("setwelcome", "salomlashish", ignore_case=True))
+async def cmd_set_welcome(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        current_welcome = await db.get_custom_welcome(message.chat.id)
+        current_display = f"\n\n📌 **Hozirgi maxsus matn:**\n{current_welcome}" if current_welcome else "\n\n📌 Hozirda **standart** salomnoma o'rnatilgan."
+
+        await message.reply(
+            f"✏️ **Yangi a'zolar uchun maxsus salomnoma o'rnatish:**\n\n"
+            f"Format:\n`/setwelcome [salomlashish matni]`\n\n"
+            f"💡 **Ishlatish mumkin bo'lgan kalit so'zlar:**\n"
+            f"• `{{name}}` — A'zoning ismi (havolasi bilan)\n"
+            f"• `{{title}}` — Guruh nomi\n"
+            f"• `{{username}}` — Foydalanuvchining @username si\n"
+            f"• `{{rules}}` — Majburiy a'zo yoki qoidalar eslatmasi\n\n"
+            f"Masalan:\n`/setwelcome Assalomu alaykum {{name}}! {{title}} guruhimizga xush kelibsiz! Qoidalarga amal qiling.`"
+            f"{current_display}\n\n"
+            f"Standart holatga qaytarish uchun: `/delwelcome`",
+            parse_mode="Markdown",
+        )
+        return
+
+    new_text = parts[1].strip()
+    await db.set_custom_welcome(message.chat.id, new_text)
+    await message.reply(
+        "✅ **Maxsus salomlashish matni muvaffaqiyatli saqlandi!**\n\n"
+        "Endi yangi a'zolar kirganda aynan shu matn bilan kutib olinadi.",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("delwelcome", "resetwelcome", ignore_case=True))
+async def cmd_del_welcome(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    await db.reset_custom_welcome(message.chat.id)
+    await message.reply(
+        "🔄 **Maxsus salomnoma o'chirildi!**\n"
+        "Yangi a'zolar yana chiroyli standart shablon bilan kutib olinadi.",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("welcome", "salom", ignore_case=True))
+async def cmd_view_welcome(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        return
+
+    current_welcome = await db.get_custom_welcome(message.chat.id)
+    if current_welcome:
+        await message.reply(
+            f"👋 **Guruhning hozirgi maxsus salomnomasi:**\n\n{current_welcome}\n\n"
+            f"O'zgartirish: `/setwelcome [matn]`\nO'chirish: `/delwelcome`",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply(
+            "👋 Guruhda **standart** salomnoma yoqilgan.\n\n"
+            "O'zingiz xohlagan matnni qo'yish uchun:\n`/setwelcome Salom {name}, guruhga xush kelibsiz!`",
+            parse_mode="Markdown",
+        )
+
 
 
 # ── /yangiqoida [matn avtomatik quyishilishi kerak va admin uzi tahrirlashi mumkin] ──
@@ -827,7 +1078,7 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
             await bot.pin_chat_message(
                 chat_id=message.chat.id,
                 message_id=target_msg.message_id,
-                notify=True,
+                disable_notification=False,
             )
             # Adminning /elon buyruq xabarini chat toza turishi uchun o'chirish
             try:
@@ -868,7 +1119,7 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
             parse_mode="Markdown",
         )
         try:
-            await bot.pin_chat_message(chat_id=message.chat.id, message_id=elon_msg.message_id, notify=True)
+            await bot.pin_chat_message(chat_id=message.chat.id, message_id=elon_msg.message_id, disable_notification=False)
         except Exception:
             pass
         return
@@ -876,7 +1127,7 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
     # 3. Agar rasm/video/fayl bilan birga /elon yozilgan bo'lsa
     if message.photo or message.video or message.document or message.audio or message.voice:
         try:
-            await bot.pin_chat_message(chat_id=message.chat.id, message_id=message.message_id, notify=True)
+            await bot.pin_chat_message(chat_id=message.chat.id, message_id=message.message_id, disable_notification=False)
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text="📢 **Faylli e'lon qadab qo'yildi!** 📌",
