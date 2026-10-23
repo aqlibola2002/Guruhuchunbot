@@ -37,26 +37,26 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
         night_mode_text = f"🌙 Faol ({group.get('night_mode_start', '23:00')} - {group.get('night_mode_end', '07:00')})"
 
     text = (
-        f"📊 **'{message.chat.title}' guruhi statistikasi:**\n\n"
-        f"👥 **Jami a'zolar:** {member_count}\n"
-        f"💬 **Bugungi xabarlar:** {stats['today_messages']} ta\n"
-        f"📈 **Jami qayd etilgan xabarlar:** {stats['total_messages']} ta\n\n"
-        f"🛡 **Bugungi jazo choralari:**\n"
-        f"• ⚠️ Ogohlantirishlar: {stats['today_warns']}\n"
-        f"• 🔇 Cheklovlar (Mute): {stats['today_mutes']}\n"
-        f"• 🚫 Chetlatishlar (Ban): {stats['today_bans']}\n\n"
-        f"⚙️ **Himoya sozlamalari holati:**\n"
-        f"• 🔗 Begona linklar filtri: {mark(group.get('antilink_enabled', 1))}\n"
-        f"• 🛡️ Antispam va reklama filtri: {mark(group.get('antispam_enabled', 1))}\n"
-        f"• ⚡️ Anti-Flood (Spam to'xtatuvchi): {mark(group.get('anti_flood_enabled', 1))}\n"
-        f"• 🌙 Tungi rejim: {night_mode_text}\n"
-        f"• 🈲 Arab/Sharqiy yozuvlar filtri: {mark(group.get('anti_arabic_enabled', 0))}\n"
-        f"• 🤖 Inline botlar filtri: {mark(group.get('anti_inline_bot', 0))}\n"
-        f"• 👥 Majburiy a'zo talabi (/odam): {inv_req_text}\n"
-        f"• 👋 Yangi a'zolarni kutib olish: {mark(group.get('welcome_enabled', 1))}\n\n"
-        f"🏆 Faol a'zolar reytingi: `/reyting`\n"
-        f"🥇 Eng ko'p odam qo'shganlar: `/toptaklif`\n"
-        f"👥 Takliflaringizni bilish: `/takliflarim`"
+        f"╔═══════════════════════════════════════╗\n"
+        f"   📊 **GURUH STATISTIKA DASHBOARDI** 📈\n"
+        f"╚═══════════════════════════════════════╝\n\n"
+        f"🏛 **Guruh:** «{message.chat.title}»\n"
+        f"👥 **Jami a'zolar:** `{member_count}` nafar\n"
+        f"💬 **Bugungi faollik:** `{stats['today_messages']}` ta xabar\n"
+        f"📈 **Jami qayd etilgan xabarlar:** `{stats['total_messages']}` ta\n\n"
+        f"🛡 **BUGUNGI INTIZOM CHORALARI:**\n"
+        f"├ 🔇 Cheklovlar (Mute): `{stats['today_mutes']}` ta\n"
+        f"└ 🚫 Chetlatishlar (Ban): `{stats['today_bans']}` ta\n\n"
+        f"⚙️ **HIMOYA TIZIMLARI HOLATI:**\n"
+        f"├ 🔗 Begona linklar filtri: {mark(group.get('antilink_enabled', 1))}\n"
+        f"├ 🛡️ Antispam va reklama: {mark(group.get('antispam_enabled', 1))}\n"
+        f"├ ⚡️ Anti-Flood (Tezkor spam): {mark(group.get('anti_flood_enabled', 1))}\n"
+        f"├ 🌙 Tungi rejim: {night_mode_text}\n"
+        f"├ 🈲 Arab/Sharqiy reyd filtri: {mark(group.get('anti_arabic_enabled', 0))}\n"
+        f"├ 🤖 Inline-botlar filtri: {mark(group.get('anti_inline_bot', 0))}\n"
+        f"├ 👥 Majburiy a'zo talabi: `{inv_req_text}`\n"
+        f"└ 👋 Yangi a'zolarni kutib olish: {mark(group.get('welcome_enabled', 1))}\n\n"
+        f"🏆 Faol a'zolar: `/reyting` | 🥇 Taklifchilar: `/toptaklif`"
     )
 
     await message.reply(text, parse_mode="Markdown")
@@ -78,7 +78,12 @@ async def cmd_top(message: Message) -> None:
         return
 
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    text = f"🏆 **'{message.chat.title}' — Eng faol a'zolar reytingi (TOP-10):**\n\n"
+    text = (
+        f"╔═══════════════════════════════════════╗\n"
+        f"   🏆 **ENG FAOL A'ZOLAR (TOP-10)** 💬\n"
+        f"╚═══════════════════════════════════════╝\n\n"
+        f"🏛 **Guruh:** «{message.chat.title}»\n\n"
+    )
 
     for idx, u in enumerate(top_users):
         medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
@@ -86,7 +91,7 @@ async def cmd_top(message: Message) -> None:
         username_part = f" (@{u['username']})" if u["username"] else ""
         text += f"{medal} **{name}**{username_part} — `{u['message_count']}` ta xabar\n"
 
-    text += "\n💡 *Guruhda xabar yozish orqali reytingingizni oshirib boring!*"
+    text += "\n✨ *Guruhda samimiy suhbatlashib, reytingingizni oshirib boring!*"
     await message.reply(text, parse_mode="Markdown")
 
 
@@ -117,9 +122,12 @@ async def cmd_takliflarim(message: Message) -> None:
                 status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stini qo'shishi kerak."
 
         await message.reply(
-            f"👤 **{target.full_name}** qo'shgan a'zolar statistikasi:\n\n"
-            f"➕ Guruhga taklif qilgan: **{user_invites}** ta a'zo\n"
-            f"🎯 Guruh talabi: **{min_inv}** ta{status_text}",
+            f"╔══════════════════════════════╗\n"
+            f"   👤 **A'ZONING TAKLIF HISOBI** 👥\n"
+            f"╚══════════════════════════════╝\n\n"
+            f"👤 **A'zo:** {target.full_name}\n"
+            f"➕ **Qo'shgan a'zolari:** `{user_invites}` ta\n"
+            f"🎯 **Guruh talabi:** `{min_inv}` ta{status_text}",
             parse_mode="Markdown",
         )
         return
@@ -135,15 +143,18 @@ async def cmd_takliflarim(message: Message) -> None:
     status_text = ""
     if min_inv > 0:
         if user_invites >= min_inv:
-            status_text = "\n✅ **Siz guruh talabini bajargansiz, bemalol yoza olasiz!**"
+            status_text = "\n✅ **Siz guruh talabini to'liq bajargansiz, bemalol yoza olasiz!**"
         else:
             left = min_inv - user_invites
             status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stingizni taklif qilishingiz kerak!"
 
     await message.reply(
-        f"👥 **{user_name}**, sizning takliflaringiz statistikasi:\n\n"
-        f"➕ Siz qo'shgan a'zolar soni: **{user_invites}** ta\n"
-        f"🎯 Guruh talabi: **{min_inv}** ta{status_text}\n\n"
+        f"╔══════════════════════════════╗\n"
+        f"   📊 **SIZNING TAKLIF HISOBINGIZ** 👥\n"
+        f"╚══════════════════════════════╝\n\n"
+        f"👤 **Foydalanuvchi:** {user_name}\n"
+        f"➕ **Siz taklif qilgan a'zolar:** `{user_invites}` ta\n"
+        f"🎯 **Guruh talabi:** `{min_inv}` ta{status_text}\n\n"
         f"💡 *Boshqa a'zoning takliflarini bilish uchun uning xabariga Reply qilib `/takliflarim` deb yozing!*",
         parse_mode="Markdown",
     )
@@ -165,7 +176,12 @@ async def cmd_top_invites(message: Message) -> None:
         return
 
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    text = f"🏆 **'{message.chat.title}' — Eng ko'p a'zo taklif qilganlar (TOP-10):**\n\n"
+    text = (
+        f"╔═══════════════════════════════════════╗\n"
+        f"   🥇 **TOP TAKLIFCHILAR (TOP-10)** 👥\n"
+        f"╚═══════════════════════════════════════╝\n\n"
+        f"🏛 **Guruh:** «{message.chat.title}»\n\n"
+    )
 
     for idx, u in enumerate(top_inviters):
         medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
@@ -173,7 +189,7 @@ async def cmd_top_invites(message: Message) -> None:
         username_part = f" (@{u['username']})" if u["username"] else ""
         text += f"{medal} **{name}**{username_part} — `{u['invite_count']}` ta a'zo qo'shgan\n"
 
-    text += "\n💡 *Guruhga yangi a'zolar qo'shish orqali reytingingizni oshirishingiz mumkin!*\nO'z hisobingiz: `/takliflarim`"
+    text += "\n💡 *Guruhga do'stlaringizni taklif qiling va reytingda 1-o'ringa chiqing!*\nO'z hisobingiz: `/takliflarim`"
     await message.reply(text, parse_mode="Markdown")
 
 
