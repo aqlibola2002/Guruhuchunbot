@@ -468,10 +468,12 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"🔒 {mention}, guruhda yozish uchun avval quyidagi kanal(lar)ga **a'zo bo'lishingiz** shart:\n\n"
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   📢 **HOMIY KANAL OBUNASI TALABI** 🔒\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 {mention}, guruhda yozish uchun avval quyidagi kanal(lar)ga a'zo bo'lishingiz lozim:\n\n"
                         f"{channel_list}\n\n"
-                        f"✅ Barchasiga a'zo bo'lgach, quyidagi **«A'zo bo'ldim»** tugmasini bosing!\n"
-                        f"📩 *Agar kirish so'rovingiz ko'rib chiqilayotgan bo'lsa, xabar yozaversangiz bo'ladi.*"
+                        f"✅ Kanalga obuna bo'lgach (yoki ariza yuborgach), **«A'zo bo'ldim»** tugmasini bosing!"
                     ),
                     parse_mode="Markdown",
                     reply_markup=join_kb,
