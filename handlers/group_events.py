@@ -347,31 +347,52 @@ async def on_chat_join_request(event: ChatJoinRequest, bot: Bot) -> None:
         if event.chat.username:
             await db.record_join_request(user_id, f"@{event.chat.username}".lower())
             await db.record_join_request(user_id, event.chat.username.lower())
-        logger.info(f"Join request qayd etildi: user {user_id} -> chat {event.chat.id}")
+        logger.info(f"Join request qayd etildi: user {user_id} -> {event.chat.type} {event.chat.id} ({event.chat.title})")
 
         group = await db.get_or_create_group(event.chat.id, event.chat.title or "")
-        # Agar guruhda zayafkalarni avtomatik qabul qilish yoqilgan bo'lsa (standart: 1)
-        if group.get("auto_approve_joins", 1) == 1:
+        auto_approve = group.get("auto_approve_joins")
+
+        # Agar guruh/kanalda zayafkalarni avtomatik qabul qilish yoqilgan bo'lsa (standart: 1)
+        if auto_approve is None or int(auto_approve) == 1:
             try:
                 await bot.approve_chat_join_request(chat_id=event.chat.id, user_id=event.from_user.id)
                 logger.info(f"✅ Zayafka avtomatik tasdiqlandi: {event.from_user.full_name} -> {event.chat.title}")
-                # Foydalanuvchiga shaxsiy xabar yuborish
+
+                # Foydalanuvchiga shaxsiy xabar yuborish (agar bot bilan muloqot boshlagan bo'lsa)
                 try:
-                    chat_title = event.chat.title or "guruhimiz"
+                    is_channel = event.chat.type == "channel"
+                    chat_type_label = "kanaliga" if is_channel else "guruhiga"
+                    chat_title = event.chat.title or ("Kanal" if is_channel else "Guruh")
+
+                    kb = None
+                    if event.chat.username:
+                        chat_url = f"https://t.me/{event.chat.username}"
+                        kb = InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="Kirish 🚀", url=chat_url)]]
+                        )
+
                     await bot.send_message(
                         chat_id=event.from_user.id,
                         text=(
                             f"🎉 **Arizangiz qabul qilindi!**\n\n"
-                            f"Sizning «**{chat_title}**» guruhiga qo'shilish arizangiz qabul qilindi. "
+                            f"Sizning «**{chat_title}**» {chat_type_label} qo'shilish arizangiz avtomatik tasdiqlandi. "
                             f"Xush kelibsiz! 😊"
                         ),
+                        reply_markup=kb,
                         parse_mode="Markdown",
                     )
                 except Exception:
                     pass
             except Exception as approve_err:
-                logger.warning(f"Zayafkani tasdiqlashda xatolik: {approve_err}")
+                err_text = str(approve_err).lower()
+                if "user_already_participant" in err_text or "hide_requester_missing" in err_text:
+                    logger.info(f"Zayafka holati: foydalanuvchi allaqachon a'zo yoki ariza o'zgartirilgan ({event.from_user.id})")
+                elif "rights" in err_text or "admin" in err_text:
+                    logger.warning(f"⚠️ Botda '{event.chat.title}' chatida arizani qabul qilish huquqi (can_invite_users) yetarli emas!")
+                else:
+                    logger.warning(f"Zayafkani tasdiqlashda xatolik: {approve_err}")
     except Exception as e:
         logger.warning(f"Join request qayd etishda umumiy xatolik: {e}")
+
 
 

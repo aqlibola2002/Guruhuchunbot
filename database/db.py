@@ -189,6 +189,10 @@ class Database:
                 await conn.execute("ALTER TABLE groups ADD COLUMN anti_inline_bot INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                await conn.execute("UPDATE groups SET auto_approve_joins = 1 WHERE auto_approve_joins IS NULL")
+            except Exception:
+                pass
             await conn.commit()
 
     # ── Guruh sozlamalari ─────────────────────────────────────────────
@@ -705,6 +709,18 @@ class Database:
             )
             row = await cursor.fetchone()
             return bool(row)
+
+    async def get_join_requests_count(self, chat_id: int | str) -> int:
+        """Chatga yuborilgan / tasdiqlangan arizalar soni."""
+        clean_id = str(chat_id).strip().lower()
+        variants = [clean_id, clean_id.lstrip("@"), f"@{clean_id.lstrip('@')}"]
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                f"SELECT COUNT(*) FROM join_requests WHERE channel_id IN ({','.join(['?']*len(variants))})",
+                (*variants,),
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
 
     # ── Ogohlantirishlar (Warns) ───────────────────────────────────────
