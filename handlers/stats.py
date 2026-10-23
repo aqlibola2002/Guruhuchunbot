@@ -32,6 +32,10 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
     min_inv = group.get("min_invites", 0)
     inv_req_text = f"{min_inv} ta ({mark(group.get('invites_enabled', 1))})" if min_inv > 0 else "Cheklov yo'q"
 
+    night_mode_text = "🌙 Faol (23:00 - 07:00)" if group.get("night_mode_enabled", 0) else "❌ O'chirilgan"
+    if group.get("night_mode_enabled", 0):
+        night_mode_text = f"🌙 Faol ({group.get('night_mode_start', '23:00')} - {group.get('night_mode_end', '07:00')})"
+
     text = (
         f"📊 **'{message.chat.title}' guruhi statistikasi:**\n\n"
         f"👥 **Jami a'zolar:** {member_count}\n"
@@ -44,9 +48,14 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
         f"⚙️ **Himoya sozlamalari holati:**\n"
         f"• 🔗 Begona linklar filtri: {mark(group.get('antilink_enabled', 1))}\n"
         f"• 🛡️ Antispam va reklama filtri: {mark(group.get('antispam_enabled', 1))}\n"
+        f"• ⚡️ Anti-Flood (Spam to'xtatuvchi): {mark(group.get('anti_flood_enabled', 1))}\n"
+        f"• 🌙 Tungi rejim: {night_mode_text}\n"
+        f"• 🈲 Arab/Sharqiy yozuvlar filtri: {mark(group.get('anti_arabic_enabled', 0))}\n"
+        f"• 🤖 Inline botlar filtri: {mark(group.get('anti_inline_bot', 0))}\n"
         f"• 👥 Majburiy a'zo talabi (/odam): {inv_req_text}\n"
         f"• 👋 Yangi a'zolarni kutib olish: {mark(group.get('welcome_enabled', 1))}\n\n"
         f"🏆 Faol a'zolar reytingi: `/reyting`\n"
+        f"🥇 Eng ko'p odam qo'shganlar: `/toptaklif`\n"
         f"👥 Takliflaringizni bilish: `/takliflarim`"
     )
 
@@ -138,5 +147,34 @@ async def cmd_takliflarim(message: Message) -> None:
         f"💡 *Boshqa a'zoning takliflarini bilish uchun uning xabariga Reply qilib `/takliflarim` deb yozing!*",
         parse_mode="Markdown",
     )
+
+
+# ── /toptaklif (Guruhga eng ko'p odam qo'shganlar reytingi) ─────────
+@router.message(Command("toptaklif", "topinvites", ignore_case=True))
+async def cmd_top_invites(message: Message) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("🏆 Taklifchilar reytingini ko'rish uchun ushbu buyruqni guruhingizda yuboring!")
+        return
+
+    top_inviters = await db.get_top_inviters(message.chat.id, limit=10)
+    if not top_inviters:
+        await message.reply(
+            f"ℹ️ **'{message.chat.title}'** guruhida hali taklif qilingan a'zolar mavjud emas.\n"
+            "Foydalanuvchilar guruhga do'stlarini qo'shgach, reyting avtomatik shakllanadi!"
+        )
+        return
+
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    text = f"🏆 **'{message.chat.title}' — Eng ko'p a'zo taklif qilganlar (TOP-10):**\n\n"
+
+    for idx, u in enumerate(top_inviters):
+        medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
+        name = u["full_name"] or "Foydalanuvchi"
+        username_part = f" (@{u['username']})" if u["username"] else ""
+        text += f"{medal} **{name}**{username_part} — `{u['invite_count']}` ta a'zo qo'shgan\n"
+
+    text += "\n💡 *Guruhga yangi a'zolar qo'shish orqali reytingingizni oshirishingiz mumkin!*\nO'z hisobingiz: `/takliflarim`"
+    await message.reply(text, parse_mode="Markdown")
+
 
 

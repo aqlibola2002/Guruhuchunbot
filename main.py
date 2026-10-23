@@ -47,7 +47,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-import os
 from aiohttp import web
 
 async def start_render_health_server() -> web.AppRunner | None:
@@ -81,8 +80,11 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="start", description="🤖 Bot imkoniyatlari va ma'lumotlar"),
         BotCommand(command="admin", description="🛡 Bot holati va admin boshqaruv paneli"),
         BotCommand(command="sozlamalar", description="⚙️ Guruh himoya sozlamalari"),
+        BotCommand(command="tun", description="🌙 Tungi rejimni sozlash (/tun on|off|23:00-07:00)"),
         BotCommand(command="zayafka", description="📥 Zayafkalarni avto-qabul qilish"),
         BotCommand(command="ogohlantir", description="⚠️ Ogohlantirish (@ id yoki reply)"),
+        BotCommand(command="unwarn", description="⚠️ 1 ta ogohlantirishni bekor qilish"),
+        BotCommand(command="ogohlantirishlar", description="📊 Ogohlantirishlar sonini ko'rish"),
         BotCommand(command="chekla", description="🔇 Yozishni cheklash (10m|2h|1d)"),
         BotCommand(command="hayda", description="🚫 Guruhdan chiqarish (Ban)"),
         BotCommand(command="kechir", description="🔓 Blokdan va cheklovdan ochish"),
@@ -95,6 +97,7 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="yangiqoida", description="📝 Yangi guruh qoidasi belgilash"),
         BotCommand(command="qoidalar", description="📜 Guruh qoidalarini ko'rish"),
         BotCommand(command="takliflarim", description="📊 Siz qo'shgan a'zolar soni"),
+        BotCommand(command="toptaklif", description="🥇 Eng ko'p odam qo'shganlar reytingi"),
         BotCommand(command="reyting", description="🏆 Faol a'zolar reytingi (TOP-10)"),
         BotCommand(command="statistika", description="📈 Guruh statistikasi va holati"),
         BotCommand(command="yordam", description="📖 Barcha buyruqlar qo'llanmasi"),

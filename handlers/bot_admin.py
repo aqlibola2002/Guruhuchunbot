@@ -244,7 +244,8 @@ async def cmd_group_info(message: Message, bot: Bot) -> None:
     try:
         chat = await bot.get_chat(cid)
         members_count = await bot.get_chat_member_count(cid)
-        bot_member = await bot.get_chat_member(cid, bot.id)
+        bot_id = int(bot.token.split(":")[0])
+        bot_member = await bot.get_chat_member(cid, bot_id)
         is_bot_adm = bot_member.status in ("administrator", "creator")
 
         group_db = await db.get_or_create_group(cid)

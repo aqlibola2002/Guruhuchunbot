@@ -22,6 +22,25 @@ from services.target_resolver import resolve_target
 router = Router(name="admin")
 
 
+def get_admin_name(message: Message) -> str:
+    """Admin ismini anonim adminlar va sender_chat uchun xavfsiz aniqlash."""
+    if message.from_user and message.from_user.full_name:
+        name = message.from_user.full_name
+    elif message.sender_chat and message.sender_chat.title:
+        name = message.sender_chat.title
+    else:
+        name = "Administrator"
+    return name.replace("*", "").replace("_", " ").replace("`", "'")
+
+
+def get_bot_id(bot: Bot) -> int:
+    """Botning int ID sini xavfsiz olish."""
+    try:
+        return int(bot.token.split(":")[0])
+    except Exception:
+        return 0
+
+
 def parse_duration(time_str: str) -> tuple[timedelta | None, str]:
     """Vaqt satrini timedelta ga aylantirish (masalan: 10m, 2h, 1d)."""
     match = re.search(r"\b(\d+)([mhd])\b", time_str.strip().lower())
@@ -277,7 +296,7 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
             f"   0️⃣ **BARCHA TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
             f"╚═══════════════════════════════════╝\n\n"
             f"📊 Jami o'chirilgan taklif qaydlari: **{deleted}** ta.{inv_note}\n\n"
-            f"👮‍♂️ Admin: {message.from_user.full_name}",
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
         )
         return
@@ -298,7 +317,7 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
         )
         return
 
-    if target.user_id == bot.id:
+    if target.user_id == get_bot_id(bot):
         await message.reply("🤖 Bot uchun takliflar hisoblanmaydi!")
         return
 
@@ -337,7 +356,7 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
         f"📊 **Oldingi qo'shgan odamlari:** **{old_invites}** ta\n"
         f"🔄 **Hozirgi takliflar:** **0** ta\n\n"
         f"{extra_note}\n\n"
-        f"👮‍♂️ Admin: {message.from_user.full_name}",
+        f"👮‍♂️ Admin: {get_admin_name(message)}",
         parse_mode="Markdown",
     )
 
@@ -505,7 +524,7 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         await message.reply(target.error, parse_mode="Markdown")
         return
 
-    if target.user_id == bot.id:
+    if target.user_id == get_bot_id(bot):
         await message.reply("🤖 Botlarga ogohlantirish berilmaydi!")
         return
 
@@ -536,7 +555,7 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
                 f"👤 **Foydalanuvchi:** {target.full_name}\n"
                 f"⚡️ **Sabab:** {reason} ({warn_count}/{MAX_WARNS})\n"
                 f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**\n"
-                f"👮‍♂️ **Admin:** {message.from_user.full_name}",
+                f"👮‍♂️ **Admin:** {get_admin_name(message)}",
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -550,7 +569,7 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"📝 **Sabab:** {reason}\n"
             f"📊 **Ogohlantirish:** **{warn_count}/{MAX_WARNS}** (yana {left} ta qoldi)\n"
-            f"👮‍♂️ **Admin:** {message.from_user.full_name}",
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
             parse_mode="Markdown",
         )
 
@@ -582,7 +601,7 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         )
         return
 
-    if target.user_id == bot.id or await is_admin(bot, message.chat.id, target.user_id):
+    if target.user_id == get_bot_id(bot) or await is_admin(bot, message.chat.id, target.user_id):
         await message.reply("❌ Bot yoki guruh adminini cheklab bo'lmaydi!")
         return
 
@@ -613,7 +632,7 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"⏳ **Muddat:** **{duration_str}**\n"
             f"📝 **Sabab:** {reason}\n"
-            f"👮‍♂️ **Admin:** {message.from_user.full_name}",
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
             parse_mode="Markdown",
         )
     except Exception as e:
@@ -644,7 +663,7 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         )
         return
 
-    if target.user_id == bot.id or await is_admin(bot, message.chat.id, target.user_id):
+    if target.user_id == get_bot_id(bot) or await is_admin(bot, message.chat.id, target.user_id):
         await message.reply("❌ Bot yoki guruh adminini ban qilib bo'lmaydi!")
         return
 
@@ -660,7 +679,7 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"📝 **Sabab:** {reason}\n"
             f"⚡️ **Holat:** Guruhdan chiqarildi va bloklandi\n"
-            f"👮‍♂️ **Admin:** {message.from_user.full_name}",
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
             parse_mode="Markdown",
         )
     except Exception as e:
@@ -721,7 +740,7 @@ async def cmd_unban_and_unmute(message: Message, bot: Bot) -> None:
         f"╚═══════════════════════════════════╝\n\n"
         f"👤 **Foydalanuvchi:** {target.full_name}\n"
         f"✅ Blok, yozish cheklovi va barcha ogohlantirishlar olib tashlandi!\n"
-        f"👮‍♂️ **Admin:** {message.from_user.full_name}",
+        f"👮‍♂️ **Admin:** {get_admin_name(message)}",
         parse_mode="Markdown",
     )
 
@@ -837,7 +856,7 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
             f"🚫 **Reklama, Link:**   ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
             f"⚠️ **Nojo'ya so'z:**     ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
             f"📊 Jami **{deleted} ta xabar** tozalandi!\n"
-            f"👮‍♂️ Admin: {message.from_user.full_name}"
+            f"👮‍♂️ Admin: {get_admin_name(message)}"
         )
         try:
             await prog_msg.edit_text(final_text, parse_mode="Markdown")
@@ -852,7 +871,7 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
         custom_count = 30
 
     # 3. ANIMATSION TOZALASH VA XABARLARNI HAQIQATDA O'CHIRISH
-    await run_animated_cleanup(bot, message.chat.id, message.message_id, custom_count, message.from_user.full_name)
+    await run_animated_cleanup(bot, message.chat.id, message.message_id, custom_count, get_admin_name(message))
 
 
 # ── /tozalash_paneli [Avto-tozalash sozlamalari menyusi] ─────────────
@@ -1044,6 +1063,30 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                text=f"🌙 Tungi rejim ({group.get('night_mode_start', '23:00')}-{group.get('night_mode_end', '07:00')}): {mark(group.get('night_mode_enabled', 0))}",
+                callback_data="toggle_night_mode",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"⚡️ Anti-Flood (Spam oqimi): {mark(group.get('anti_flood_enabled', 1))}",
+                callback_data="toggle_anti_flood",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🈲 Arab/Raid spambot filtri: {mark(group.get('anti_arabic_enabled', 0))}",
+                callback_data="toggle_anti_arabic",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🤖 Inline botlar: {mark_block(group.get('anti_inline_bot', 0))}",
+                callback_data="toggle_anti_inline_bot",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text=inv_text,
                 callback_data="toggle_invites",
             )
@@ -1098,12 +1141,15 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
     raw = call.data.replace("toggle_", "")
     group = await db.get_or_create_group(call.message.chat.id)
 
-    if raw in ("block_stickers", "block_voice"):
+    if raw in ("block_stickers", "block_voice", "anti_inline_bot"):
         setting_key = raw
         current_val = group.get(setting_key, 0)
     elif raw == "auto_approve":
         setting_key = "auto_approve_joins"
         current_val = group.get(setting_key, 1)
+    elif raw in ("night_mode", "anti_flood", "anti_arabic"):
+        setting_key = raw + "_enabled"
+        current_val = group.get(setting_key, 0 if raw != "anti_flood" else 1)
     else:
         setting_key = raw + "_enabled"
         current_val = group.get(setting_key, 1)
@@ -1394,5 +1440,130 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
         "• **Yangi matnli e'lon yozib qadash:**\n"
         "  `/elon [E'lon matni]`\n\n"
         "📌 Bot xabarni barcha a'zolar ko'rishi uchun darhol guruhga qadab (pin) beradi!",
+        parse_mode="Markdown",
+    )
+
+
+# ── /tun [Tungi rejimni sozlash] ─────────────────────────────────────
+@router.message(Command("tun", "nightmode", "tungi", ignore_case=True))
+async def cmd_night_mode(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    parts = (message.text or "").split()
+
+    if len(parts) == 1:
+        cur_en = group.get("night_mode_enabled", 0)
+        status_txt = "YOQILGAN ✅" if cur_en == 1 else "O'CHIRILGAN ❌"
+        st = group.get("night_mode_start", "23:00")
+        en = group.get("night_mode_end", "07:00")
+        await message.reply(
+            f"🌙 **Tungi rejim (Night Mode) holati:** {status_txt}\n\n"
+            f"⏰ **Amal qilish vaqti:** `{st}` dan `{en}` gacha\n\n"
+            "📌 **Qanday boshqariladi:**\n"
+            "• Yoqish: `/tun on`\n"
+            "• O'chirish: `/tun off`\n"
+            "• Vaqtini o'zgartirish: `/tun on 22:30-06:30` yoki `/tun 23:00-07:00`\n\n"
+            "💡 *Tungi rejimda bot belgilangan vaqtda oddiy a'zolarga yozishni avtomatik yopadi va ertalab yana ochadi.*",
+            parse_mode="Markdown",
+        )
+        return
+
+    arg = parts[1].lower()
+    time_match = re.search(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})", message.text or "")
+    start_val = time_match.group(1) if time_match else None
+    end_val = time_match.group(2) if time_match else None
+
+    if arg in ("on", "1", "yoq", "start"):
+        await db.set_night_mode(message.chat.id, enabled=1, start=start_val, end=end_val)
+        st = start_val or group.get("night_mode_start", "23:00")
+        en = end_val or group.get("night_mode_end", "07:00")
+        await message.reply(
+            f"🌙 **Tungi rejim YOQILDI!** ✅\n\n"
+            f"⏰ Vaqt: har kuni soat **{st}** dan **{en}** gacha guruh avtomatik yopiladi va ochiladi.",
+            parse_mode="Markdown",
+        )
+    elif arg in ("off", "0", "ochir", "stop"):
+        await db.set_night_mode(message.chat.id, enabled=0)
+        if group.get("night_mode_is_locked", 0) == 1:
+            try:
+                await bot.set_chat_permissions(
+                    chat_id=message.chat.id,
+                    permissions=ChatPermissions(
+                        can_send_messages=True,
+                        can_send_other_messages=True,
+                        can_add_web_page_previews=True,
+                        can_send_polls=True,
+                    ),
+                )
+                await db.set_night_mode_lock_state(message.chat.id, 0)
+            except Exception:
+                pass
+        await message.reply("☀️ **Tungi rejim O'CHIRILDI!**\nGuruh endi doimiy ochiq qoladi.", parse_mode="Markdown")
+    elif time_match:
+        await db.set_night_mode(message.chat.id, enabled=1, start=start_val, end=end_val)
+        await message.reply(
+            f"✅ **Tungi rejim vaqti yangilandi va ishga tushirildi!**\n\n"
+            f"⏰ Yangi vaqt: **{start_val}** — **{end_val}**",
+            parse_mode="Markdown",
+        )
+
+
+# ── /unwarn [Ogohlantirishni kamaytirish] ───────────────────────────
+@router.message(Command("unwarn", "warnochir", ignore_case=True))
+async def cmd_unwarn(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    target = await resolve_target(message)
+    if target.error:
+        await message.reply(
+            "⚠️ **Ogohlantirishni bekor qilish (/unwarn):**\n\n"
+            "Foydalanuvchining 1 ta ogohlantirishini olib tashlaydi.\n"
+            "Format: Foydalanuvchi xabariga **Reply** qilib `/unwarn` deb yozing yoki `/unwarn @foydalanuvchi`.",
+            parse_mode="Markdown",
+        )
+        return
+
+    rem = await db.remove_warn(message.chat.id, target.user_id)
+    mention = f"[{target.full_name}](tg://user?id={target.user_id})"
+    await message.reply(
+        f"✅ {mention} foydalanuvchisidan 1 ta ogohlantirish olib tashlandi!\n"
+        f"📊 Qolgan ogohlantirishlar: **{rem}/{MAX_WARNS}**\n"
+        f"👮‍♂️ Admin: {get_admin_name(message)}",
+        parse_mode="Markdown",
+    )
+
+
+# ── /ogohlantirishlar [Ogohlantirishlar sonini ko'rish] ──────────────
+@router.message(Command("ogohlantirishlar", "warns", ignore_case=True))
+async def cmd_view_warns(message: Message) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+    target = await resolve_target(message)
+    if target.error or not target.user_id:
+        target_id = message.from_user.id if message.from_user else 0
+        target_name = message.from_user.full_name if message.from_user else "Siz"
+    else:
+        target_id = target.user_id
+        target_name = target.full_name or "Foydalanuvchi"
+
+    cnt = await db.get_warns(message.chat.id, target_id)
+    await message.reply(
+        f"👤 **{target_name}** ogohlantirishlari:\n\n"
+        f"⚠️ Jami: **{cnt} / {MAX_WARNS}** ta\n"
+        f"💡 *3 ta ogohlantirishda bot a'zoni avtomatik 24 soatga mute qiladi.*",
         parse_mode="Markdown",
     )

@@ -161,6 +161,34 @@ class Database:
                 await conn.execute("ALTER TABLE groups ADD COLUMN last_welcome_msg_id INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN night_mode_enabled INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN night_mode_start TEXT DEFAULT '23:00'")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN night_mode_end TEXT DEFAULT '07:00'")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN night_mode_is_locked INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_arabic_enabled INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_flood_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_inline_bot INTEGER DEFAULT 0")
+            except Exception:
+                pass
             await conn.commit()
 
     # ── Guruh sozlamalari ─────────────────────────────────────────────
@@ -205,6 +233,10 @@ class Database:
             "block_stickers",
             "block_voice",
             "auto_approve_joins",
+            "night_mode_enabled",
+            "anti_arabic_enabled",
+            "anti_flood_enabled",
+            "anti_inline_bot",
         }
         if setting_name not in allowed:
             return
@@ -212,6 +244,37 @@ class Database:
             await conn.execute(
                 f"UPDATE groups SET {setting_name} = ? WHERE chat_id = ?",
                 (value, chat_id),
+            )
+            await conn.commit()
+
+    async def set_night_mode(
+        self, chat_id: int, enabled: int | None = None, start: str | None = None, end: str | None = None
+    ) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            updates = []
+            params = []
+            if enabled is not None:
+                updates.append("night_mode_enabled = ?")
+                params.append(enabled)
+            if start is not None:
+                updates.append("night_mode_start = ?")
+                params.append(start)
+            if end is not None:
+                updates.append("night_mode_end = ?")
+                params.append(end)
+            if updates:
+                params.append(chat_id)
+                await conn.execute(
+                    f"UPDATE groups SET {', '.join(updates)} WHERE chat_id = ?",
+                    tuple(params),
+                )
+                await conn.commit()
+
+    async def set_night_mode_lock_state(self, chat_id: int, is_locked: int) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE groups SET night_mode_is_locked = ? WHERE chat_id = ?",
+                (is_locked, chat_id),
             )
             await conn.commit()
 

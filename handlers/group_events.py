@@ -195,6 +195,7 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
                     .replace("{username}", u_name)
                     .replace("{first_name}", new_user.first_name or "")
                     .replace("{members}", str(members_cnt or ""))
+                    .replace("{rules}", req_info)
                 )
             else:
                 welcome_text = (

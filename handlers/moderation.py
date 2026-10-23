@@ -34,6 +34,38 @@ LINK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Arab, Eron va Xitoy spambot yozuvlarini aniqlash regexi
+ARABIC_ORIENTAL_PATTERN = re.compile(
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u4E00-\u9FFF]"
+)
+
+# Flood nazorati uchun kesh: {(chat_id, user_id): [timestamps]}
+FLOOD_CACHE: dict[tuple[int, int], list[float]] = {}
+FLOOD_THRESHOLD_COUNT = 5
+FLOOD_THRESHOLD_SECONDS = 4.0
+
+
+def is_flooding(chat_id: int, user_id: int) -> bool:
+    """Foydalanuvchi qisqa vaqtda ketma-ket haddan tashqari ko'p xabar yuborayotganini aniqlaydi."""
+    try:
+        now = asyncio.get_event_loop().time()
+    except Exception:
+        import time
+        now = time.time()
+    key = (chat_id, user_id)
+    timestamps = FLOOD_CACHE.setdefault(key, [])
+    timestamps = [t for t in timestamps if now - t <= FLOOD_THRESHOLD_SECONDS]
+    timestamps.append(now)
+    FLOOD_CACHE[key] = timestamps
+    return len(timestamps) >= FLOOD_THRESHOLD_COUNT
+
+
+def contains_arabic_or_oriental(text: str) -> bool:
+    """Matnda arab, fors yoki sharqiy spambot belgilari borligini aniqlash."""
+    if not text:
+        return False
+    return bool(ARABIC_ORIENTAL_PATTERN.search(text))
+
 
 def safe_mention(full_name: str | None, user_id: int | None) -> str:
     """Foydalanuvchi ismidagi qavslar va maxsus belgilarni tozalab xavfsiz Telegram Markdown linkini qaytaradi."""
@@ -104,10 +136,10 @@ def check_dangerous_file(message: Message) -> tuple[bool, str]:
         if any(vid_name.endswith(ext) for ext in DANGEROUS_EXTENSIONS) or ".apk" in vid_name:
             return True, message.video.file_name or "APK fayl (video niqobi ostida)"
 
-    # 3. Matn yoki rasm tavsifi (caption) da .apk havolasi yoki .apk fayl nomi
+    # 3. Matn yoki rasm tavsifi (caption) da to'g'ridan-to'g'ri .apk yuklash havolasi
     text_content = (message.text or message.caption or "").lower()
-    if text_content and re.search(r"(?:https?://\S+/[^\s]+\.apk|\b[\w\-.]+\.apk\b)", text_content, re.IGNORECASE):
-        return True, "APK virus havolasi / fayli"
+    if text_content and re.search(r"https?://\S+/[^\s]+\.apk\b", text_content, re.IGNORECASE):
+        return True, "APK virus havolasi"
 
     return False, ""
 
@@ -150,21 +182,26 @@ def contains_spam(text: str) -> bool:
     return False
 
 
-def contains_links(message: Message) -> bool:
+def contains_links(message: Message, bot_username: str = "") -> bool:
     """Xabarda har qanday havola (link), @username yoki URL bor-yo'qligini tekshirish."""
     text = (message.text or message.caption or "").strip()
+    whitelist = list(WHITELISTED_LINKS)
+    if bot_username:
+        clean_bot = bot_username.lower().lstrip("@")
+        whitelist.append(f"@{clean_bot}")
+        whitelist.append(f"t.me/{clean_bot}")
 
     # 1. Telegram entities tekshiruvi (yashirin yoki ochiq havolalar)
     entities = (message.entities or []) + (message.caption_entities or [])
     for ent in entities:
         if ent.type in ("url", "text_link", "mention"):
             if ent.type == "text_link" and ent.url:
-                if not any(w.lower() in ent.url.lower() for w in WHITELISTED_LINKS):
+                if not any(w.lower() in ent.url.lower() for w in whitelist):
                     return True
             else:
                 try:
                     sub = text.encode("utf-16-le")[ent.offset * 2 : (ent.offset + ent.length) * 2].decode("utf-16-le", errors="ignore")
-                    if not any(w.lower() in sub.lower() for w in WHITELISTED_LINKS):
+                    if not any(w.lower() in sub.lower() for w in whitelist):
                         return True
                 except Exception:
                     return True
@@ -173,7 +210,7 @@ def contains_links(message: Message) -> bool:
     matches = LINK_PATTERN.findall(text)
     if matches:
         for match in matches:
-            if not any(w.lower() in match.lower() for w in WHITELISTED_LINKS):
+            if not any(w.lower() in match.lower() for w in whitelist):
                 return True
 
     return False
@@ -457,8 +494,83 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         ]
     )
 
-    # 2. Xavfli APK (Virus/Troyan) fayllarini aniqlash — bu yerga kelganda foydalanuvchi admin EMAS
-    # (Adminlar uchun tekshiruv yuqorida — admin bypass'dan oldin o'tkazildi)
+    # ⚡️ 2.1 Anti-Flood (Ketma-ket tez yozish orqali spam qilish)
+    if group.get("anti_flood_enabled", 1) == 1 and message.from_user:
+        if is_flooding(message.chat.id, message.from_user.id):
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                until_date = datetime.now(timezone.utc) + timedelta(minutes=15)
+                try:
+                    await bot.restrict_chat_member(
+                        chat_id=message.chat.id,
+                        user_id=message.from_user.id,
+                        permissions=ChatPermissions(can_send_messages=False),
+                        until_date=until_date,
+                    )
+                    await db.record_punishment(message.chat.id, "mute")
+                except Exception:
+                    pass
+                mention = safe_mention(message.from_user.full_name, message.from_user.id)
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   ⚡️ **ANTI-FLOOD HIMOYA TIZIMI** ⚡️\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 {mention}, siz juda tez xabar yozdingiz (Flood spam)!\n"
+                        f"⏳ **Guruh tinchligini saqlash maqsadida 15 daqiqaga yozishdan cheklandingiz (MUTE).**"
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify, 15))
+                return
+
+    # 🤖 2.2 Anti-Inline Bot (Yashirin botlar orqali reklama yuborish taqiqi)
+    if group.get("anti_inline_bot", 0) == 1 and message.via_bot:
+        mention = safe_mention(message.from_user.full_name, message.from_user.id) if message.from_user else "Foydalanuvchi"
+        if bot_can_delete_msg:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🤖 **INLINE BOT REKLAMASI TAQIQI** 🤖\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🚫 {mention}, guruhda inline botlar (@...) orqali xabar yuborish taqiqlangan!"
+                ),
+                parse_mode="Markdown",
+            )
+            asyncio.create_task(auto_delete_notification(notify))
+            return
+
+    # 🈲 2.3 Anti-Arabic / Anti-Raid (Arab va sharqiy spambotlar filtri)
+    text_to_check = message.text or message.caption or ""
+    user_name_to_check = message.from_user.full_name if message.from_user else ""
+    if group.get("anti_arabic_enabled", 0) == 1 and (contains_arabic_or_oriental(text_to_check) or contains_arabic_or_oriental(user_name_to_check)):
+        mention = safe_mention(message.from_user.full_name, message.from_user.id) if message.from_user else "Spambot"
+        if bot_can_delete_msg:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🈲 **ANTI-RAID / SPAMBOT FILTRI** 🈲\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🚫 {mention}, guruhda arab/fors/xitoy yozuvlari bilan xabar yozish taqiqlangan!"
+                ),
+                parse_mode="Markdown",
+            )
+            asyncio.create_task(auto_delete_notification(notify))
+            return
 
     # 3. Forward (Uzatilgan) xabarlarni nazorat qilish va o'chirish (Anti-Forward)
     if group.get("antiforward_enabled", 1) == 1 and is_forwarded_message(message):
@@ -636,210 +748,291 @@ async def process_group_message(message: Message, bot: Bot) -> None:
 
     # 6. Haqorat va so'kinish filtri (Profanity filter)
     if group.get("profanity_enabled", 1) == 1 and contains_profanity(text):
-        warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "So'kinish/Haqorat")
-
-        if bot_can_delete_msg:
-            try:
-                await message.delete()
-            except Exception:
-                pass
-
-            if warn_cnt >= MAX_WARNS:
-                until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+        if not message.from_user and message.sender_chat:
+            if bot_can_delete_msg:
                 try:
-                    await bot.restrict_chat_member(
-                        chat_id=message.chat.id,
-                        user_id=message.from_user.id,
-                        permissions=ChatPermissions(can_send_messages=False),
-                        until_date=until_date,
-                    )
-                    await db.reset_warns(message.chat.id, message.from_user.id)
-                    notify_mute = await bot.send_message(
-                        chat_id=message.chat.id,
-                        text=(
-                            f"╔═══════════════════════════════════╗\n"
-                            f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
-                            f"╚═══════════════════════════════════╝\n\n"
-                            f"👤 **Qoidabuzar:** {mention}\n"
-                            f"⚡️ **Sabab:** So'kinish va haqorat qoidalarini ketma-ket buzgani uchun!\n"
-                            f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
-                        ),
-                        parse_mode="Markdown",
-                    )
-                    asyncio.create_task(auto_delete_notification(notify_mute))
-                    return
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    await bot.ban_chat_sender_chat(chat_id=message.chat.id, sender_chat_id=message.sender_chat.id)
+                except Exception:
+                    pass
+                ch_title = (message.sender_chat.title or "Kanal").replace("*", "").replace("_", " ").replace("`", "'")
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"📢 **Kanal:** «{ch_title}»\n"
+                        f"⚡️ **Sabab:** So'kinish va haqorat yuborilgani uchun!\n"
+                        f"🔒 Ushbu kanal guruhda yozishdan butunlay bloklandi."
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify))
+            return
+
+        if message.from_user:
+            warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "So'kinish/Haqorat")
+
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
                 except Exception:
                     pass
 
-            notify = await bot.send_message(
-                chat_id=message.chat.id,
-                text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
-                    f"╚═══════════════════════════════════╝\n\n"
-                    f"🚫 {mention}, guruhda so'kinish va haqoratli so'zlar ishlatish qat'iyan taqiqlanadi!\n"
-                    f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**\n"
-                    f"💡 *Ogohlantirishlar 3 taga yetsa, 24 soatga guruhda yozishdan cheklanasiz!*"
-                ),
-                parse_mode="Markdown",
-            )
-            asyncio.create_task(auto_delete_notification(notify))
-            return
-        else:
-            await message.reply(
-                text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
-                    f"╚═══════════════════════════════════╝\n\n"
-                    f"👤 Yuboruvchi: {mention}\n"
-                    f"⚠️ Guruhda so'kinish va haqorat taqiqlanadi! ({warn_cnt}/{MAX_WARNS})\n\n"
-                    f"🤖 **Administratorlar diqqatiga:**\n"
-                    f"Bot bunday xabarlarni o'zi tozalab turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
-                ),
-                parse_mode="Markdown",
-                reply_markup=admin_req_kb,
-            )
-            return
+                if warn_cnt >= MAX_WARNS:
+                    until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+                    try:
+                        await bot.restrict_chat_member(
+                            chat_id=message.chat.id,
+                            user_id=message.from_user.id,
+                            permissions=ChatPermissions(can_send_messages=False),
+                            until_date=until_date,
+                        )
+                        await db.reset_warns(message.chat.id, message.from_user.id)
+                        notify_mute = await bot.send_message(
+                            chat_id=message.chat.id,
+                            text=(
+                                f"╔═══════════════════════════════════╗\n"
+                                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                                f"╚═══════════════════════════════════╝\n\n"
+                                f"👤 **Qoidabuzar:** {mention}\n"
+                                f"⚡️ **Sabab:** So'kinish va haqorat qoidalarini ketma-ket buzgani uchun!\n"
+                                f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                        asyncio.create_task(auto_delete_notification(notify_mute))
+                        return
+                    except Exception:
+                        pass
+
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 {mention}, guruhda so'kinish va haqoratli so'zlar ishlatish qat'iyan taqiqlanadi!\n"
+                        f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**\n"
+                        f"💡 *Ogohlantirishlar 3 taga yetsa, 24 soatga guruhda yozishdan cheklanasiz!*"
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify))
+                return
+            else:
+                await message.reply(
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"👤 Yuboruvchi: {mention}\n"
+                        f"⚠️ Guruhda so'kinish va haqorat taqiqlanadi! ({warn_cnt}/{MAX_WARNS})\n\n"
+                        f"🤖 **Administratorlar diqqatiga:**\n"
+                        f"Bot bunday xabarlarni o'zi tozalab turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
+                    ),
+                    parse_mode="Markdown",
+                    reply_markup=admin_req_kb,
+                )
+                return
 
     # 7. Begona havolalar (Har qanday havola va reklama) nazorati
-    if group.get("antilink_enabled", 1) == 1 and contains_links(message):
-        mention = safe_mention(message.from_user.full_name if message.from_user else None, message.from_user.id if message.from_user else None)
-        warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Ruxsatsiz havola / Reklama")
-
-        if bot_can_delete_msg:
-            try:
-                await message.delete()
-            except Exception:
-                pass
-
-            if warn_cnt >= MAX_WARNS:
-                until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+    if group.get("antilink_enabled", 1) == 1 and contains_links(message, bot_username=bot_info.username or ""):
+        if not message.from_user and message.sender_chat:
+            if bot_can_delete_msg:
                 try:
-                    await bot.restrict_chat_member(
-                        chat_id=message.chat.id,
-                        user_id=message.from_user.id,
-                        permissions=ChatPermissions(can_send_messages=False),
-                        until_date=until_date,
-                    )
-                    await db.reset_warns(message.chat.id, message.from_user.id)
-                    notify_mute = await bot.send_message(
-                        chat_id=message.chat.id,
-                        text=(
-                            f"╔═══════════════════════════════════╗\n"
-                            f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
-                            f"╚═══════════════════════════════════╝\n\n"
-                            f"👤 **Qoidabuzar:** {mention}\n"
-                            f"⚡️ **Sabab:** Ruxsatsiz havola tarqatgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
-                            f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
-                        ),
-                        parse_mode="Markdown",
-                    )
-                    asyncio.create_task(auto_delete_notification(notify_mute))
-                    return
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    await bot.ban_chat_sender_chat(chat_id=message.chat.id, sender_chat_id=message.sender_chat.id)
+                except Exception:
+                    pass
+                ch_title = (message.sender_chat.title or "Kanal").replace("*", "").replace("_", " ").replace("`", "'")
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"📢 **Kanal:** «{ch_title}»\n"
+                        f"⚡️ **Sabab:** Guruhda kanal orqali reklama va havola tarqatilgani uchun!\n"
+                        f"🔒 Ushbu kanal guruhda yozishdan butunlay bloklandi."
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify))
+            return
+
+        if message.from_user:
+            mention = safe_mention(message.from_user.full_name, message.from_user.id)
+            warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Ruxsatsiz havola / Reklama")
+
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
                 except Exception:
                     pass
 
-            notify = await bot.send_message(
-                chat_id=message.chat.id,
-                text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
-                    f"╚═══════════════════════════════════╝\n\n"
-                    f"🚫 {mention}, guruhda har qanday havola (link) va reklama tarqatish qat'iyan taqiqlanadi!\n\n"
-                    f"📢 Reklama bermoqchi bo'lsangiz, iltimos, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
-                    f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
-                ),
-                parse_mode="Markdown",
-            )
-            asyncio.create_task(auto_delete_notification(notify))
-            return
-        else:
-            # Bot admin bo'lmasa — reklama tarqatganga ogohlantirish beradi va adminlik so'raydi!
-            warn_msg = await message.reply(
-                text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
-                    f"╚═══════════════════════════════════╝\n\n"
-                    f"👤 Yuboruvchi: {mention}\n"
-                    f"⚠️ Guruhda har qanday havola (link) va reklama tarqatish taqiqlanadi!\n"
-                    f"📢 Reklama bermoqchi bo'lsangiz, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
-                    f"🤖 **Administratorlar diqqatiga:**\n"
-                    f"Bot havolalarni avtomatik o'chirib turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
-                ),
-                parse_mode="Markdown",
-                reply_markup=admin_req_kb,
-            )
-            asyncio.create_task(auto_delete_notification(warn_msg))
-            return
+                if warn_cnt >= MAX_WARNS:
+                    until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+                    try:
+                        await bot.restrict_chat_member(
+                            chat_id=message.chat.id,
+                            user_id=message.from_user.id,
+                            permissions=ChatPermissions(can_send_messages=False),
+                            until_date=until_date,
+                        )
+                        await db.reset_warns(message.chat.id, message.from_user.id)
+                        notify_mute = await bot.send_message(
+                            chat_id=message.chat.id,
+                            text=(
+                                f"╔═══════════════════════════════════╗\n"
+                                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                                f"╚═══════════════════════════════════╝\n\n"
+                                f"👤 **Qoidabuzar:** {mention}\n"
+                                f"⚡️ **Sabab:** Ruxsatsiz havola tarqatgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
+                                f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                        asyncio.create_task(auto_delete_notification(notify_mute))
+                        return
+                    except Exception:
+                        pass
+
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 {mention}, guruhda har qanday havola (link) va reklama tarqatish qat'iyan taqiqlanadi!\n\n"
+                        f"📢 Reklama bermoqchi bo'lsangiz, iltimos, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
+                        f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify))
+                return
+            else:
+                # Bot admin bo'lmasa — reklama tarqatganga ogohlantirish beradi va adminlik so'raydi!
+                warn_msg = await message.reply(
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"👤 Yuboruvchi: {mention}\n"
+                        f"⚠️ Guruhda har qanday havola (link) va reklama tarqatish taqiqlanadi!\n"
+                        f"📢 Reklama bermoqchi bo'lsangiz, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
+                        f"🤖 **Administratorlar diqqatiga:**\n"
+                        f"Bot havolalarni avtomatik o'chirib turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
+                    ),
+                    parse_mode="Markdown",
+                    reply_markup=admin_req_kb,
+                )
+                asyncio.create_task(auto_delete_notification(warn_msg))
+                return
 
     # 8. Spam va Reklama nazorati
     if group.get("antispam_enabled", 1) == 1 and contains_spam(text):
-        mention = safe_mention(message.from_user.full_name if message.from_user else None, message.from_user.id if message.from_user else None)
-        warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Spam/Reklama")
-
-        if bot_can_delete_msg:
-            try:
-                await message.delete()
-            except Exception:
-                pass
-
-            if warn_cnt >= MAX_WARNS:
-                until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+        if not message.from_user and message.sender_chat:
+            if bot_can_delete_msg:
                 try:
-                    await bot.restrict_chat_member(
-                        chat_id=message.chat.id,
-                        user_id=message.from_user.id,
-                        permissions=ChatPermissions(can_send_messages=False),
-                        until_date=until_date,
-                    )
-                    await db.reset_warns(message.chat.id, message.from_user.id)
-                    notify_mute = await bot.send_message(
-                        chat_id=message.chat.id,
-                        text=(
-                            f"╔═══════════════════════════════════╗\n"
-                            f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
-                            f"╚═══════════════════════════════════╝\n\n"
-                            f"👤 **Qoidabuzar:** {mention}\n"
-                            f"⚡️ **Sabab:** Ko'p spam xabar yuborgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
-                            f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
-                        ),
-                        parse_mode="Markdown",
-                    )
-                    asyncio.create_task(auto_delete_notification(notify_mute))
-                    return
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    await bot.ban_chat_sender_chat(chat_id=message.chat.id, sender_chat_id=message.sender_chat.id)
+                except Exception:
+                    pass
+                ch_title = (message.sender_chat.title or "Kanal").replace("*", "").replace("_", " ").replace("`", "'")
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"📢 **Kanal:** «{ch_title}»\n"
+                        f"⚡️ **Sabab:** Guruhda kanal orqali spam/reklama tarqatilgani uchun!\n"
+                        f"🔒 Ushbu kanal guruhda yozishdan butunlay bloklandi."
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify))
+            return
+
+        if message.from_user:
+            mention = safe_mention(message.from_user.full_name, message.from_user.id)
+            warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Spam/Reklama")
+
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
                 except Exception:
                     pass
 
-            notify = await bot.send_message(
-                chat_id=message.chat.id,
-                text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
-                    f"╚═══════════════════════════════════╝\n\n"
-                    f"⚠️ {mention}, spam yoki reklama xabari aniqlangani sababli o'chirildi!\n"
-                    f"📊 Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
-                ),
-                parse_mode="Markdown",
-            )
-            asyncio.create_task(auto_delete_notification(notify))
-            return
-        else:
-            # Bot admin bo'lmasa — reklama tarqatganga javob yozadi va adminlik so'raydi!
-            await message.reply(
-                text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
-                    f"╚═══════════════════════════════════╝\n\n"
-                    f"👤 Yuboruvchi: {mention} (Ogohlantirish: {warn_cnt}/{MAX_WARNS})\n\n"
-                    f"🤖 **Hurmatli Guruh Administratorlari!**\n"
-                    f"Ushbu reklamalarni darhol o'chirib, qoidabuzarlarni cheklab turishim uchun "
-                    f"menga guruh sozlamalaridan **Administrator (Admin)** huquqini bering! 🛡\n"
-                    f"✅ *Kerakli huquq: Xabarlarni o'chirish va a'zolarni cheklash.*"
-                ),
-                parse_mode="Markdown",
-                reply_markup=admin_req_kb,
-            )
-            return
+                if warn_cnt >= MAX_WARNS:
+                    until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+                    try:
+                        await bot.restrict_chat_member(
+                            chat_id=message.chat.id,
+                            user_id=message.from_user.id,
+                            permissions=ChatPermissions(can_send_messages=False),
+                            until_date=until_date,
+                        )
+                        await db.reset_warns(message.chat.id, message.from_user.id)
+                        notify_mute = await bot.send_message(
+                            chat_id=message.chat.id,
+                            text=(
+                                f"╔═══════════════════════════════════╗\n"
+                                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                                f"╚═══════════════════════════════════╝\n\n"
+                                f"👤 **Qoidabuzar:** {mention}\n"
+                                f"⚡️ **Sabab:** Ko'p spam xabar yuborgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
+                                f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                        asyncio.create_task(auto_delete_notification(notify_mute))
+                        return
+                    except Exception:
+                        pass
+
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"⚠️ {mention}, spam yoki reklama xabari aniqlangani sababli o'chirildi!\n"
+                        f"📊 Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify))
+                return
+            else:
+                # Bot admin bo'lmasa — reklama tarqatganga javob yozadi va adminlik so'raydi!
+                await message.reply(
+                    text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"👤 Yuboruvchi: {mention} (Ogohlantirish: {warn_cnt}/{MAX_WARNS})\n\n"
+                        f"🤖 **Hurmatli Guruh Administratorlari!**\n"
+                        f"Ushbu reklamalarni darhol o'chirib, qoidabuzarlarni cheklab turishim uchun "
+                        f"menga guruh sozlamalaridan **Administrator (Admin)** huquqini bering! 🛡\n"
+                        f"✅ *Kerakli huquq: Xabarlarni o'chirish va a'zolarni cheklash.*"
+                    ),
+                    parse_mode="Markdown",
+                    reply_markup=admin_req_kb,
+                )
+                return
 
     # 9. FAQ (Avto-javoblar) tekshiruvi
     if text:
