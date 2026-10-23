@@ -1023,8 +1023,11 @@ async def cmd_settings(message: Message, bot: Bot) -> None:
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     kb = get_settings_keyboard(group)
     await message.reply(
-        f"⚙️ **'{message.chat.title}' guruhi himoya sozlamalari:**\n\n"
-        f"Quyidagi tugmalar orqali xavfsizlik va nazorat funksiyalarini boshqaring:",
+        f"╔═══════════════════════════════════════╗\n"
+        f"   ⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
+        f"╚═══════════════════════════════════════╝\n\n"
+        f"📍 **Guruh:** «{message.chat.title}»\n\n"
+        f"Quyidagi interaktiv tugmalar orqali botning xavfsizlik va nazorat funksiyalarini boshqaring:",
         reply_markup=kb,
         parse_mode="Markdown",
     )
@@ -1078,17 +1081,19 @@ async def callback_refresh_settings(call: CallbackQuery, bot: Bot) -> None:
 async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply(
-            "📥 **Qo'shilish arizalarini (Zayafka) avtomatik qabul qilish tizimi:**\n\n"
-            "Ushbu funksiya orqali bot guruhingiz yoki kanalingizga qo'shilish so'rovi (Join Request) yuborgan a'zolarni **1 soniyada avtomatik qabul qiladi**!\n\n"
-            "🔹 **Guruh uchun sozlash:**\n"
-            "1. Botni guruhingizga qo'shib, Administrator qiling.\n"
-            "2. Unga «A'zolarni taklif qilish» (Invite Users / Manage Join Requests) huquqini bering.\n"
-            "3. Guruh ichida `/zayafka on` deb yozing.\n\n"
-            "🔹 **Kanal uchun sozlash:**\n"
-            "1. Botni kanalingizga Administrator qilib qo'shing.\n"
-            "2. Unga «A'zolarni taklif qilish» (Invite Users) huquqini bering.\n"
-            "3. Kanalingizda «Arizalarni tasdiqlash» (Request Admin Approval) yoqilgan taklif havolasi yarating.\n"
-            "4. Bot barcha arizalarni avtomatik tasdiqlaydi va a'zoga tabrik xabari yuboradi!",
+            f"╔═══════════════════════════════════════╗\n"
+            f"   📥 **AVTO-ZAYAFKA QABUL TIZIMI** 🚀\n"
+            f"╚═══════════════════════════════════════╝\n\n"
+            f"Ushbu funksiya orqali bot guruhingiz yoki kanalingizga qo'shilish so'rovi (Join Request) yuborgan a'zolarni **1 soniyada avtomatik qabul qiladi**!\n\n"
+            f"🔹 **Guruh uchun sozlash:**\n"
+            f"├ 1. Botni guruhingizga qo'shib, Administrator qiling.\n"
+            f"├ 2. Unga «A'zolarni taklif qilish» (Invite Users) huquqini bering.\n"
+            f"└ 3. Guruh ichida `/zayafka on` deb yozing.\n\n"
+            f"🔹 **Kanal uchun sozlash:**\n"
+            f"├ 1. Botni kanalingizga Administrator qilib qo'shing.\n"
+            f"├ 2. Unga «A'zolarni taklif qilish» (Invite Users) huquqini bering.\n"
+            f"├ 3. Kanalingizda «Arizalarni tasdiqlash» yoqilgan taklif havolasi yarating.\n"
+            f"└ 4. Bot barcha arizalarni avtomatik tasdiqlaydi va a'zoga VIP salomnoma yuboradi!",
             parse_mode="Markdown",
         )
         return
@@ -1127,18 +1132,23 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
         await db.update_group_setting(message.chat.id, "auto_approve_joins", new_val)
         if new_val == 1:
             await message.reply(
-                f"✅ **Guruhga qo'shilish arizalarini (Zayafka) avtomatik qabul qilish YOQILDI!** 📥\n\n"
-                f"📊 **Qabul qilingan arizalar:** `{approved_count}` ta\n"
-                f"🤖 **Bot huquqi holati:** {rights_text}\n\n"
-                f"Endi yangi a'zolar taklif havolasi orqali so'rov yuborganida, bot ularni darhol guruhga qabul qiladi va shaxsiy salomnoma yuboradi.\n\n"
+                f"╔═══════════════════════════════════════╗\n"
+                f"   📥 **AVTO-ZAYAFKA QABUL YOQILDI** ✅\n"
+                f"╚═══════════════════════════════════════╝\n\n"
+                f"├ 📊 **Qabul qilingan arizalar:** `{approved_count}` ta\n"
+                f"├ 🤖 **Bot huquqi:** {rights_text}\n"
+                f"└ 👮‍♂️ **Admin:** {get_admin_name(message)}\n\n"
+                f"🚀 Endi yangi a'zolar havola orqali so'rov yuborganida, bot ularni 1 soniyada tasdiqlab, guruhga qabul qiladi va VIP salomnoma yuboradi.\n\n"
                 f"O'chirish uchun: `/zayafka off`",
                 parse_mode="Markdown",
             )
         else:
             await message.reply(
-                "🛑 **Guruhga qo'shilish arizalarini (Zayafka) avtomatik qabul qilish O'CHIRILDI!**\n\n"
-                "Endi arizalarni adminlar qo'lda tasdiqlashi kerak bo'ladi.\n\n"
-                "Qayta yoqish uchun: `/zayafka on`",
+                f"╔═══════════════════════════════════════╗\n"
+                f"   🛑 **AVTO-ZAYAFKA QABUL TO'XTATILDI** 🛑\n"
+                f"╚═══════════════════════════════════════╝\n\n"
+                f"Endi arizalarni adminlar qo'lda tasdiqlashi kerak bo'ladi.\n\n"
+                f"Qayta yoqish uchun: `/zayafka on`",
                 parse_mode="Markdown",
             )
         return
@@ -1161,13 +1171,16 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
     )
 
     await message.reply(
-        f"📥 **Qo'shilish arizalari (Zayafka) nazorati:**\n\n"
-        f"🔹 **Joriy holat:** {status_label}\n"
-        f"📊 **Qabul qilingan arizalar soni:** `{approved_count}` ta\n"
-        f"🤖 **Bot huquqi holati:** {rights_text}\n\n"
+        f"╔═══════════════════════════════════════╗\n"
+        f"   📥 **QO'SHILISH ARIZALARI (ZAYAFKA)** 🚀\n"
+        f"╚═══════════════════════════════════════╝\n\n"
+        f"├ 📍 **Guruh:** «{message.chat.title}»\n"
+        f"├ ⚡️ **Joriy holat:** {status_label}\n"
+        f"├ 📊 **Qabul qilingan jami arizalar:** `{approved_count}` ta\n"
+        f"└ 🤖 **Bot huquqi:** {rights_text}\n\n"
         f"💡 **Buyruqlar:**\n"
-        f"• `/zayafka on` — avtomatik qabul qilishni yoqish\n"
-        f"• `/zayafka off` — avtomatik qabul qilishni to'xtatish\n\n"
+        f"├ `/zayafka on` — avtomatik qabul qilishni yoqish\n"
+        f"└ `/zayafka off` — avtomatik qabul qilishni to'xtatish\n\n"
         f"Yoki quyidagi tugma orqali o'zgartiring:",
         reply_markup=kb,
         parse_mode="Markdown",
@@ -1296,13 +1309,17 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
         st = group.get("night_mode_start", "23:00")
         en = group.get("night_mode_end", "07:00")
         await message.reply(
-            f"🌙 **Tungi rejim (Night Mode) holati:** {status_txt}\n\n"
-            f"⏰ **Amal qilish vaqti:** `{st}` dan `{en}` gacha\n\n"
-            "📌 **Qanday boshqariladi:**\n"
-            "• Yoqish: `/tun on`\n"
-            "• O'chirish: `/tun off`\n"
-            "• Vaqtini o'zgartirish: `/tun on 22:30-06:30` yoki `/tun 23:00-07:00`\n\n"
-            "💡 *Tungi rejimda bot belgilangan vaqtda oddiy a'zolarga yozishni avtomatik yopadi va ertalab yana ochadi.*",
+            f"╔═══════════════════════════════════════╗\n"
+            f"   🌙 **TUNGI REJIM SOZLAMALARI** 🔒\n"
+            f"╚═══════════════════════════════════════╝\n\n"
+            f"├ 📍 **Guruh:** «{message.chat.title}»\n"
+            f"├ ⚡️ **Joriy holat:** {status_txt}\n"
+            f"└ ⏰ **Vaqt oralig'i:** `{st}` dan `{en}` gacha\n\n"
+            f"📌 **Qanday boshqariladi:**\n"
+            f"├ `/tun on` — Tungi rejimni yoqish\n"
+            f"├ `/tun off` — Tungi rejimni o'chirish\n"
+            f"└ `/tun 23:00-07:00` — Maxsus vaqt oralig'ini sozlash\n\n"
+            f"💡 *Tungi rejimda bot belgilangan soatda oddiy a'zolarga yozishni avtomatik yopadi va tongda qayta ochadi.*",
             parse_mode="Markdown",
         )
         return
@@ -1317,8 +1334,12 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
         st = start_val or group.get("night_mode_start", "23:00")
         en = end_val or group.get("night_mode_end", "07:00")
         await message.reply(
-            f"🌙 **Tungi rejim YOQILDI!** ✅\n\n"
-            f"⏰ Vaqt: har kuni soat **{st}** dan **{en}** gacha guruh avtomatik yopiladi va ochiladi.",
+            f"╔═══════════════════════════════════════╗\n"
+            f"   🌙 **TUNGI REJIM ISHGA TUSHIRILDI** ✅\n"
+            f"╚═══════════════════════════════════════╝\n\n"
+            f"⏰ **Amal qilish vaqti:** Har kuni soat **{st}** dan **{en}** gacha\n"
+            f"🔒 Belgilangan vaqt oralig'ida guruh avtomatik yopiladi va tongda qayta ochiladi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
         )
     elif arg in ("off", "0", "ochir", "stop"):
@@ -1337,12 +1358,22 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
                 await db.set_night_mode_lock_state(message.chat.id, 0)
             except Exception:
                 pass
-        await message.reply("☀️ **Tungi rejim O'CHIRILDI!**\nGuruh endi doimiy ochiq qoladi.", parse_mode="Markdown")
+        await message.reply(
+            f"╔═══════════════════════════════════════╗\n"
+            f"   ☀️ **TUNGI REJIM O'CHIRILDI** 🔓\n"
+            f"╚═══════════════════════════════════════╝\n\n"
+            f"✅ Guruh endi 24 soat davomida ochiq holatda qoladi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
     elif time_match:
         await db.set_night_mode(message.chat.id, enabled=1, start=start_val, end=end_val)
         await message.reply(
-            f"✅ **Tungi rejim vaqti yangilandi va ishga tushirildi!**\n\n"
-            f"⏰ Yangi vaqt: **{start_val}** — **{end_val}**",
+            f"╔═══════════════════════════════════════╗\n"
+            f"   ⏰ **TUNGI REJIM VAQTI O'ZGARTIRILDI** ✅\n"
+            f"╚═══════════════════════════════════════╝\n\n"
+            f"⏰ Yangi vaqt oralig'i: **{start_val}** — **{end_val}**\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
         )
 

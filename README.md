@@ -13,23 +13,23 @@ Telegram guruhlarini avtomatlashtirish, reklama va spamlardan tozalash, qoidabuz
 | 0️⃣ **/nol** | Reply orqali a'zoning guruhga qo'shgan barcha odamlarini nol (0) ga tushirish. Foydalanuvchi guruhda yozish uchun qaytadan yangi a'zo qo'shishi kerak bo'ladi (`/nol`, `/nol @username`, `/nol ID`, `/nol all`). |
 | 🌟 **/takliflarim** | Foydalanuvchi o'z takliflarini ko'rishi va majburiyat bajarilganini tekshirish. |
 | 👋 **Avto-kutib olish** | Yangi a'zo kirganda uning ismi bilan chiroyli xush kelibsiz xabari va qoidalar tugmachalari chiqadi. "Falonchi qo'shildi / chiqdi" xizmat xabarlari avtomatik tozalanadi. |
-| 🤬 **Haqorat & So'kinish filtri** | O'zbekcha va ruscha behayo so'zlarni avtomatik o'chiradi va ogohlantirish (warn) beradi. |
+| 🤬 **Haqorat & So'kinish filtri** | O'zbekcha va ruscha behayo so'zlarni avtomatik o'chiradi va qoidabuzarga ogohlantirish beradi. |
 | 🎭 **Media filtrlari (Stiker/Ovoz)** | Guruhda stiker/GIF yoki ovozli xabar (voice) va dumaloq videolarni alohida taqiqlash imkoniyati. |
-| ✏️ **/setwelcome** | Yangi a'zolar uchun o'zingiz xohlagan maxsus salomnoma matnini o'rnatish (`{name}`, `{title}`). |
-| 📢 **Majburiy kanallar (`/kanal`)** | Bir nechta majburiy kanallar qo'shish va a'zolikni «A'zo bo'ldim» tugmasi bilan tekshirish. |
-| 🛡 **Antispam & Reklama** | Kazino (1xbet, stavkalar), oson pul va firibgarlik havolalari aniqlanganda xabar o'chiriladi va ogohlantirish beriladi. |
-| 🔗 **Antilink (Begona havolalar)** | Oddiy a'zolar tashlagan `t.me/`, `@username` va veb-sayt havolalari avtomatik o'chiriladi (Adminlarga ruxsat berilgan). |
-| ⚠️ **/warn** | Qoidabuzarlarga ogohlantirish berish (1/3, 2/3). 3-ogohlantirishda bot foydalanuvchini 24 soatga guruhda yozishdan cheklaydi. |
-| 🔇 **/mute** | Foydalanuvchini vaqtincha yozishdan to'xtatish (masalan: `/mute 10m`, `/mute 2h`, `/mute 1d`). |
-| 🚫 **/ban & /unban** | Guruhdan butunlay haydash yoki qayta kirishiga ruxsat berish. |
-| 🧹 **/clear** | Guruhdagi oxirgi xabarlarni tozalash (masalan: `/clear 20`). |
-| 📜 **/rules & /setrules** | Guruh qoidalarini chiqarish va yangi qoidalar o'rnatish. |
+| 🌙 **/tun** | Tungi rejimni sozlash (`/tun on`, `/tun off`, `/tun 23:00-07:00`). Belgilangan soatda guruhni avto-yopish va ertalab ochish. |
+| 📥 **/zayafka** | Guruh va kanallarga qo'shilish arizalarini (Join Request) 1 soniyada avtomatik tasdiqlash (`/zayafka on`, `/zayafka off`). |
+| 📢 **Majburiy kanallar (`/kanal`)** | Homiy kanallar qo'shish va a'zolikni «A'zo bo'ldim» tugmasi bilan 24/7 tekshirish (`/kanal @kanal`, `/kanal ochir @kanal`). |
+| 🛡 **Antispam & Reklama** | Kazino (1xbet, stavkalar), oson pul va firibgarlik havolalari aniqlanganda xabarlar o'chiriladi. |
+| 🔗 **Antilink (Begona havolalar)** | Oddiy a'zolar yuborgan `t.me/`, `@username` va veb-sayt havolalari avtomatik o'chiriladi (Adminlarga ruxsat berilgan). |
+| 🔇 **/chekla** | Qoidabuzarni vaqtincha yozishdan to'xtatish (masalan: `/chekla 10m`, `/chekla 2h`, `/chekla 1d`). |
+| 🚫 **/hayda** | Guruhdan butunlay chiqarish va bloklash (Ban). |
+| 🧹 **/tozala** | Guruhdagi oxirgi xabarlarni progress bar bilan tozalash (masalan: `/tozala 20` yoki a'zoga reply). |
 | ❓ **FAQ (Avto-javoblar)** | Tez-tez so'raladigan savollar bo'yicha bot o'zi javob beradi (`/addfaq savol = javob`). |
-| 📊 **/stats** | Guruh a'zolari, bugungi xabarlar, jazo choralari va taklif talablari haqida hisobot. |
-| 🏆 **/top** | Guruhdagi eng faol 10 ta foydalanuvchi reytingi (🥇 🥈 🥉). |
-| 📢 **/broadcast** | Admin e'lonini guruhga yuborish va avtomatik qadab (pin) qo'yish. |
+| 📊 **/statistika** | Guruh a'zolari, bugungi xabarlar, jazo choralari va himoya tizimlari holati. |
+| 🏆 **/reyting** | Guruhdagi eng faol 10 ta foydalanuvchi reytingi (🥇 🥈 🥉). |
+| 🥇 **/toptaklif** | Eng ko'p do'st taklif qilgan 10 ta a'zo reytingi. |
+| 📌 **/elon** | Har qanday xabar, rasm yoki videoli e'lonni guruhga yuborish va avtomatik qadab (pin) qo'yish. |
 | ⏰ **Rejali xabarlar** | Har kuni ertalab (08:30) va kechqurun (22:30) guruhga avtomatik salomnomalar. |
-| ⚙️ **/settings** | Guruh himoya sozlamalarini (Antilink, Antispam, So'kinish filtri, Media taqiqlari, Majburiy taklif) inline tugmalar bilan boshqarish. |
+| ⚙️ **/sozlamalar** | Guruh himoya tizimlarini bitta qulay tugmali menyu orqali boshqarish. |
 | 👑 **/panel** | Bot Egasi (Super Admin) boshqaruv paneli (Global statistika, Uptime, tizim holati). |
 | 💾 **/backup** | Ma'lumotlar bazasini (`group_bot.db`) bot egasiga Telegram orqali yuborish. |
 | 📢 **/send, /send_users, /send_all** | Barcha guruhlar, shaxsiy foydalanuvchilar yoki barchaga professional xabar tarqatish (rassilka). |

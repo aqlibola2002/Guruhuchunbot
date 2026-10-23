@@ -91,7 +91,7 @@ async def resolve_target(message: Message) -> TargetResult:
         error=(
             "⚠️ Foydalanuvchini ko'rsating:\n"
             "• Foydalanuvchining xabariga **Reply** (Javob) qiling\n"
-            "• Yoki `@username` kiriting (masalan: `/ogohlantir @username`)\n"
-            "• Yoki Telegram **ID** raqamini kiriting (masalan: `/ogohlantir 123456789`)"
+            "• Yoki `@username` kiriting (masalan: `/chekla @username 10m`)\n"
+            "• Yoki Telegram **ID** raqamini kiriting (masalan: `/hayda 123456789`)"
         )
     )
