@@ -94,9 +94,8 @@ async def build_admin_panel_text(bot: Bot) -> str:
     bl_count = len(await db.get_blacklist())
 
     text = (
-        f"╔═══════════════════════════════════════╗\n"
-        f"   👑 **SUPER ADMIN BOSHQARUV PANELI** 💎\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"👑 **SUPER ADMIN BOSHQARUV PANELI** 💎\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🤖 **Bot:** @{me.username} ({me.first_name})\n"
         f"⚡️ **Holat:** {maint_status}\n"
         f"⏱ **Uptime:** {uptime}\n"

@@ -37,9 +37,8 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
         night_mode_text = f"🌙 Faol ({group.get('night_mode_start', '23:00')} - {group.get('night_mode_end', '07:00')})"
 
     text = (
-        f"╔═══════════════════════════════════════╗\n"
-        f"   📊 **GURUH STATISTIKA DASHBOARDI** 📈\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"📊 **GURUH STATISTIKA DASHBOARDI** 📈\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🏛 **Guruh:** «{message.chat.title}»\n"
         f"👥 **Jami a'zolar:** `{member_count}` nafar\n"
         f"💬 **Bugungi faollik:** `{stats['today_messages']}` ta xabar\n"
@@ -79,9 +78,8 @@ async def cmd_top(message: Message) -> None:
 
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
     text = (
-        f"╔═══════════════════════════════════════╗\n"
-        f"   🏆 **ENG FAOL A'ZOLAR (TOP-10)** 💬\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"🏆 **ENG FAOL A'ZOLAR (TOP-10)** 💬\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🏛 **Guruh:** «{message.chat.title}»\n\n"
     )
 
@@ -122,9 +120,8 @@ async def cmd_takliflarim(message: Message) -> None:
                 status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stini qo'shishi kerak."
 
         await message.reply(
-            f"╔══════════════════════════════╗\n"
-            f"   👤 **A'ZONING TAKLIF HISOBI** 👥\n"
-            f"╚══════════════════════════════╝\n\n"
+            f"👤 **A'ZONING TAKLIF HISOBI** 👥\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **A'zo:** {target.full_name}\n"
             f"➕ **Qo'shgan a'zolari:** `{user_invites}` ta\n"
             f"🎯 **Guruh talabi:** `{min_inv}` ta{status_text}",
@@ -149,9 +146,8 @@ async def cmd_takliflarim(message: Message) -> None:
             status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stingizni taklif qilishingiz kerak!"
 
     await message.reply(
-        f"╔══════════════════════════════╗\n"
-        f"   📊 **SIZNING TAKLIF HISOBINGIZ** 👥\n"
-        f"╚══════════════════════════════╝\n\n"
+        f"📊 **SIZNING TAKLIF HISOBINGIZ** 👥\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 **Foydalanuvchi:** {user_name}\n"
         f"➕ **Siz taklif qilgan a'zolar:** `{user_invites}` ta\n"
         f"🎯 **Guruh talabi:** `{min_inv}` ta{status_text}\n\n"
@@ -177,9 +173,8 @@ async def cmd_top_invites(message: Message) -> None:
 
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
     text = (
-        f"╔═══════════════════════════════════════╗\n"
-        f"   🥇 **TOP TAKLIFCHILAR (TOP-10)** 👥\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"🥇 **TOP TAKLIFCHILAR (TOP-10)** 👥\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🏛 **Guruh:** «{message.chat.title}»\n\n"
     )
 

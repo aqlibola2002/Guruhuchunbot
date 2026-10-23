@@ -7,9 +7,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 router = Router(name="common")
 
 BOT_CAPABILITIES_TEXT = (
-    "╔═══════════════════════════════════════╗\n"
-    "   👑 **GURUHCHI UZ — PREMIUM GURUH HIMOYA** 🛡\n"
-    "╚═══════════════════════════════════════╝\n\n"
+    "👑 **GURUHCHI UZ — PREMIUM GURUH HIMOYA** 🛡\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     "💎 **Telegram guruh va kanallari uchun eng kuchli, zamonaviy avtomatlashtirish va kiber-himoya boti!**\n\n"
     "🚀 Guruhingizni 24/7 rejimda spamerlar, viruslar (.apk) va nojo'ya reklamalardan himoya qilib, a'zolarni ko'paytirishga yordam beradi.\n\n"
     "⚙️ **ENG KUCHLI IMKONIYATLAR VA MODULLAR:**\n"
@@ -65,9 +64,8 @@ async def cmd_start(message: Message, bot: Bot) -> None:
 @router.message(Command("yordam", "help", ignore_case=True))
 async def cmd_help(message: Message) -> None:
     help_text = (
-        "╔═══════════════════════════════════════╗\n"
-        "   📖 **BUYRUQLAR VA QO'LLANMA (VIP)** 💎\n"
-        "╚═══════════════════════════════════════╝\n\n"
+        "📖 **BUYRUQLAR VA QO'LLANMA (VIP)** 💎\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "👥 **GURUH A'ZOLARI UCHUN:**\n"
         "├ `/start` — Bot imkoniyatlari va boshqaruv havolasi\n"
         "├ `/odam` — Guruhda yozish uchun majburiy a'zo talabi holati\n"
@@ -104,9 +102,8 @@ async def cmd_help(message: Message) -> None:
 @router.callback_query(F.data == "btn_help_info")
 async def cb_help_info(call: CallbackQuery) -> None:
     help_text = (
-        "╔═══════════════════════════════════════╗\n"
-        "   🚀 **TEZKOR SOZLASH BO'YICHA YO'RIQNOMA** 💎\n"
-        "╚═══════════════════════════════════════╝\n\n"
+        "🚀 **TEZKOR SOZLASH BO'YICHA YO'RIQNOMA** 💎\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "1️⃣ Botni guruhingizga qo'shing.\n"
         "2️⃣ Guruh sozlamalaridan botga **Administrator (Admin)** huquqini bering:\n"
         "   ├ Xabarlarni o'chirish (Delete messages)\n"

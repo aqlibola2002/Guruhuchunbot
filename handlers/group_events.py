@@ -45,9 +45,8 @@ async def send_group_intro(bot: Bot, chat_id: int, chat_title: str) -> None:
     )
 
     intro_text = (
-        f"╔═══════════════════════════════════════╗\n"
-        f"   👑 **GURUHCHI UZ — PREMIUM HIMOYACHI** 🛡\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"👑 **GURUHCHI UZ — PREMIUM HIMOYACHI** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"Assalomu alaykum, **«{chat_title}»** guruhi jamoasi va administratorlari!\n"
         f"Guruhingizni tartibga solish, reklama/viruslardan 24/7 tozalash va a'zolar oqimini kengaytirish uchun bot faollashdi! 🚀\n\n"
         f"💎 **ENG ASOSIY IMKONIYATLAR:**\n"
@@ -377,9 +376,8 @@ async def on_chat_join_request(event: ChatJoinRequest, bot: Bot) -> None:
                     await bot.send_message(
                         chat_id=event.from_user.id,
                         text=(
-                            f"╔══════════════════════════════╗\n"
-                            f"   💎 **ARIZANGIZ TASDIQLANDI!** 🚀\n"
-                            f"╚══════════════════════════════╝\n\n"
+                            f"💎 **ARIZANGIZ TASDIQLANDI!** 🚀\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
                             f"Assalomu alaykum, **{event.from_user.full_name}**!\n\n"
                             f"Sizning «**{chat_title}**» {chat_type_label} a'zo bo'lish arizangiz avtomatik qabul qilindi. "
                             f"Xush kelibsiz! 😊✨"
