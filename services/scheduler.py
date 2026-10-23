@@ -101,10 +101,12 @@ async def check_night_mode(bot: Bot) -> None:
                         await bot.send_message(
                             chat_id=chat_id,
                             text=(
-                                f"🌙 **TUNGI REJIM ISHGA TUSHDI!** 😴\n\n"
-                                f"Guruh soat **{start_t}** dan **{end_t}** gacha sukunat rejimiga o'tkazildi.\n"
-                                f"A'zolar osoyishtaligini saqlash maqsadida yozish vaqtincha to'xtatildi.\n\n"
-                                f"Ertalab soat **{end_t}** da guruh avtomatik ochiladi. Xayrli tun! ✨"
+                                f"╔══════════════════════════════╗\n"
+                                f"   🌙 **TUNGI REJIM FAOL** 😴\n"
+                                f"╚══════════════════════════════╝\n\n"
+                                f"Guruh tungi osoyishtalik rejimiga o'tkazildi.\n"
+                                f"⏰ **Sukunat vaqti:** `{start_t}` — `{end_t}`\n\n"
+                                f"✨ *Tongda soat {end_t} da guruh avtomatik qayta ochiladi. Barchaga xayrli tun!* 🌌"
                             ),
                             parse_mode="Markdown",
                         )
@@ -126,9 +128,12 @@ async def check_night_mode(bot: Bot) -> None:
                         await bot.send_message(
                             chat_id=chat_id,
                             text=(
-                                f"☀️ **XAYRLI TONG! TUNGI REJIM YAKUNLANDI.** 🌟\n\n"
-                                f"Guruh muloqot uchun qayta ochildi!\n"
-                                f"Barchangizga mazmunli va omadli kun tilaymiz! 😊"
+                                f"╔══════════════════════════════╗\n"
+                                f"   ☀️ **XAYRLI TONG!** ☕️✨\n"
+                                f"╚══════════════════════════════╝\n\n"
+                                f"Tungi sukunat rejimi yakunlandi.\n"
+                                f"🔓 Guruhda samimiy muloqot qayta ochildi!\n\n"
+                                f"🌟 *Barchangizga mazmunli va omadli kun tilaymiz!* 😊"
                             ),
                             parse_mode="Markdown",
                         )

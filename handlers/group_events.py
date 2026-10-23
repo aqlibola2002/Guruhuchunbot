@@ -45,23 +45,26 @@ async def send_group_intro(bot: Bot, chat_id: int, chat_title: str) -> None:
     )
 
     intro_text = (
-        f"👋 **Assalomu alaykum, '{chat_title}' guruhi a'zolari va administratorlari!**\n\n"
-        "Men — **Guruhchi** botiman! Guruhda tartib saqlash, spamlardan tozalash va a'zolar sonini faol ko'paytirishda sizga xizmat qilaman! 🛡🤖\n\n"
-        "✨ **Mening asosiy imkoniyatlarim:**\n"
-        "• 👥 **Majburiy a'zo talabi:** `/odam 5` (a'zolar guruhda yozishlari uchun 5 ta odam qo'shishi shart qilinadi)\n"
-        "• 📊 **A'zolarni hisoblash:** `/takliflarim` (har bir a'zo qo'shgan odamlar soni)\n"
-        "• 🛡️ **Antispam & Antilink:** Reklama, kazino va begona linklarni avtomatik o'chirish\n"
-        "• 🧹 **Guruhni tozalash:** `/tozala 20` (keraksiz xabarlarni tozalash)\n"
-        "• ⚠️ **Jazo choralari:** `/ogohlantir`, `/chekla`, `/hayda`\n"
-        "• 📈 **Statistika & Reyting:** `/statistika` va `/reyting`\n"
-        "• ❓ **Avto-javoblar:** `/savollar` va `/savolqoshish`\n\n"
-        "⚠️ **DIQQAT (Muhim qadam):**\n"
-        "Men to'liq va benuqson ishlashim uchun menga guruh sozlamalaridan **Administrator (Admin)** huquqlarini bering:\n"
-        "✅ *Xabarlarni o'chirish (Delete messages)*\n"
-        "✅ *Foydalanuvchilarni cheklash (Restrict members)*\n"
-        "✅ *Xabarlarni qadash (Pin messages)*\n\n"
-        "Barcha buyruqlarni ko'rish: `/yordam`\n"
-        "Sozlamalarni ochish: `/sozlamalar`"
+        f"╔═══════════════════════════════════════╗\n"
+        f"   👑 **GURUHCHI UZ — PREMIUM HIMOYACHI** 🛡\n"
+        f"╚═══════════════════════════════════════╝\n\n"
+        f"Assalomu alaykum, **«{chat_title}»** guruhi jamoasi va administratorlari!\n"
+        f"Guruhingizni tartibga solish, reklama/viruslardan 24/7 tozalash va a'zolar oqimini kengaytirish uchun bot faollashdi! 🚀\n\n"
+        f"💎 **ENG ASOSIY IMKONIYATLAR:**\n"
+        f"├ 🌙 **Tungi rejim:** Soat 23:00 dan 07:00 gacha avtomatik yopilish (`/tun`)\n"
+        f"├ ⚡️ **Anti-Flood:** Sekundiga xabar yog'diruvchi spamerlarni avto-cheklash\n"
+        f"├ 📥 **Zayafka avto-qabul:** Guruh/kanal arizalarini 1 soniyada tasdiqlash (`/zayafka`)\n"
+        f"├ 🈲 **Anti-Raid:** Xorijiy arab/sharqiy spambot xabarlarini darhol yo'q qilish\n"
+        f"├ 🤖 **Anti-Inline bot:** Begona inline reklama botlarini tozalash\n"
+        f"├ 🦠 **Anti-APK:** Troyan va virusli fayllarni 100% o'chirish\n"
+        f"├ 👥 **Majburiy taklif:** `/odam 5` (a'zo qo'shmaguncha yoza olmaydi)\n"
+        f"├ 🥇 **TOP Taklifchilar:** Eng ko'p odam qo'shganlar reytingi (`/toptaklif`)\n"
+        f"└ 🧹 **Tezkor tozalash:** Oxirgi xabarlarni tozalash (`/tozala 20`)\n\n"
+        f"⚡️ **BOT BENUQSON ISHLASHI UCHUN:**\n"
+        f"Guruh sozlamalaridan botga **Administrator** huquqlarini bering:\n"
+        f"✅ *Xabarlarni o'chirish* | ✅ *A'zolarni cheklash* | ✅ *Xabarlarni qadash*\n\n"
+        f"⚙️ Boshqaruv paneli: `/sozlamalar`\n"
+        f"📖 Barcha buyruqlar: `/yordam`"
     )
 
     try:
@@ -374,9 +377,12 @@ async def on_chat_join_request(event: ChatJoinRequest, bot: Bot) -> None:
                     await bot.send_message(
                         chat_id=event.from_user.id,
                         text=(
-                            f"🎉 **Arizangiz qabul qilindi!**\n\n"
-                            f"Sizning «**{chat_title}**» {chat_type_label} qo'shilish arizangiz avtomatik tasdiqlandi. "
-                            f"Xush kelibsiz! 😊"
+                            f"╔══════════════════════════════╗\n"
+                            f"   💎 **ARIZANGIZ TASDIQLANDI!** 🚀\n"
+                            f"╚══════════════════════════════╝\n\n"
+                            f"Assalomu alaykum, **{event.from_user.full_name}**!\n\n"
+                            f"Sizning «**{chat_title}**» {chat_type_label} a'zo bo'lish arizangiz avtomatik qabul qilindi. "
+                            f"Xush kelibsiz! 😊✨"
                         ),
                         reply_markup=kb,
                         parse_mode="Markdown",

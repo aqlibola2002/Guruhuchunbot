@@ -82,20 +82,13 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="sozlamalar", description="⚙️ Guruh himoya sozlamalari"),
         BotCommand(command="tun", description="🌙 Tungi rejimni sozlash (/tun on|off|23:00-07:00)"),
         BotCommand(command="zayafka", description="📥 Zayafkalarni avto-qabul qilish"),
-        BotCommand(command="ogohlantir", description="⚠️ Ogohlantirish (@ id yoki reply)"),
-        BotCommand(command="unwarn", description="⚠️ 1 ta ogohlantirishni bekor qilish"),
-        BotCommand(command="ogohlantirishlar", description="📊 Ogohlantirishlar sonini ko'rish"),
         BotCommand(command="chekla", description="🔇 Yozishni cheklash (10m|2h|1d)"),
-        BotCommand(command="hayda", description="🚫 Guruhdan chiqarish (Ban)"),
-        BotCommand(command="kechir", description="🔓 Blokdan va cheklovdan ochish"),
+        BotCommand(command="hayda", description="🚫 Guruhdan chiqarish va bloklash (Ban)"),
         BotCommand(command="tozala", description="🧹 Xabarlarni tozalash (/tozala 20 yoki reply)"),
         BotCommand(command="elon", description="📢 E'lon va fayllarni qadash (pin)"),
         BotCommand(command="odam", description="👥 Majburiy a'zo talabi (/odam 5)"),
         BotCommand(command="nol", description="0️⃣ A'zo takliflarini 0 qilish (reply)"),
-        BotCommand(command="kanal", description="📡 Majburiy kanal qo'shish/ko'rish"),
-        BotCommand(command="setwelcome", description="✏️ Maxsus salomlashish matnini sozlash"),
-        BotCommand(command="yangiqoida", description="📝 Yangi guruh qoidasi belgilash"),
-        BotCommand(command="qoidalar", description="📜 Guruh qoidalarini ko'rish"),
+        BotCommand(command="kanal", description="📡 Majburiy kanal qo'shish/boshqarish"),
         BotCommand(command="takliflarim", description="📊 Siz qo'shgan a'zolar soni"),
         BotCommand(command="toptaklif", description="🥇 Eng ko'p odam qo'shganlar reytingi"),
         BotCommand(command="reyting", description="🏆 Faol a'zolar reytingi (TOP-10)"),
@@ -124,29 +117,28 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
 
     try:
         await bot.set_my_short_description(
-            short_description="🛡 Guruh himoyachisi: APK virus filtri, spam/link/forward blokchi, majburiy a'zo va admin boshqaruv boti!"
+            short_description="💎 Telegram guruh va kanallari uchun eng kuchli, premium himoya va avtomatlashtirish boti! 🛡️⚡️"
         )
     except Exception as e:
         logger.warning(f"Qisqa bio o'rnatishda: {e}")
 
     try:
         desc = (
-            "🛡 Guruhchi — Telegram guruhlarini professional himoya qilish va boshqarish boti!\n\n"
-            "⚡️ Bot nima qila oladi?\n\n"
-            "🦠 APK virus fayllarini avtomatik o'chirish (adminlar ham!)\n"
-            "🔄 Forward qilingan xabarlarni o'chirish\n"
-            "🔗 Begona havola (link) va reklamalarni bloklash\n"
-            "🚫 Spam xabarlarni tozalash va jazolash\n"
-            "👥 Majburiy a'zo talabi (/odam 5)\n"
-            "➕ Qo'shilgan a'zolarni sanash (/takliflarim)\n"
-            "⚠️ Jazo choralari (/ogohlantir, /chekla, /hayda, /kechir)\n"
-            "🧹 Xabarlarni tozalash (/tozala 20)\n"
-            "📢 Majburiy kanallar qo'shish (/kanal)\n"
-            "📊 Statistika va reyting (/statistika, /reyting)\n"
-            "📜 Guruh qoidalari (/qoidalar, /yangiqoida)\n"
-            "📣 E'lon va qadash (/elon)\n"
-            "🛡 Admin boshqaruv paneli (/admin)\n\n"
-            "Meni guruhingizga qo'shib, Administrator huquqini bering!"
+            "👑 GURUHCHI UZ — PREMIUM GURUH NAZORATCHISI VA HIMOYACHISI! 🛡\n\n"
+            "Guruhingizni tartibga solish, reklama va viruslardan tozalash hamda a'zolarni oson ko'paytirish uchun 24/7 to'liq avtomatik ishlaydi.\n\n"
+            "💎 ASOSIY PREMIUM IMKONIYATLAR:\n"
+            "├ 🌙 Tungi rejim (guruhni tunda avto-yopish va ertalab ochish)\n"
+            "├ ⚡️ Anti-Flood (soniyada xabar yog'diruvchi spamerlarni darhol cheklash)\n"
+            "├ 📥 Zayafkalar avto-qabuli (guruh va kanal arizalarini 1 soniyada tasdiqlash)\n"
+            "├ 🈲 Arab/Sharqiy reyd-botlar va xorijiy spamlarni bir zumda tozalash\n"
+            "├ 🤖 Begona Inline-botlar va yashirin reklamalarni bloklash\n"
+            "├ 🦠 Anti-APK xavfli virus/troyan fayllarini avtomatik yo'q qilish\n"
+            "├ 🔗 Begona havola (link), reklama va so'kinishlarni o'chirish\n"
+            "├ 👥 Majburiy odam qo'shish talabi va TOP Taklifchilar reytingi\n"
+            "├ 📢 Majburiy homiy kanalga a'zo bo'lish tizimi\n"
+            "├ 🧹 Xabarlarni chaqmoq tezligida tozalash (/tozala)\n"
+            "└ ⚙️ Yagona zamonaviy tugmali boshqaruv paneli (/sozlamalar)\n\n"
+            "🚀 Guruhingizga qo'shing va Administrator huquqini bering!"
         )
         await bot.set_my_description(description=desc)
         logger.info("Bot bio va tavsifi muvaffaqiyatli yangilandi ✅")
@@ -192,7 +184,10 @@ async def main() -> None:
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        needed_updates = ["message", "edited_message", "callback_query", "chat_member", "my_chat_member", "chat_join_request"]
+        resolved = dp.resolve_used_update_types() or []
+        final_updates = list(set(list(resolved) + needed_updates))
+        await dp.start_polling(bot, allowed_updates=final_updates)
     finally:
         scheduler.shutdown(wait=False)
         if web_runner:
