@@ -96,9 +96,8 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
     bot_status = "✅ Admin (o'chira oladi)" if bot_can_del else "⚠️ Admin emas (o'chira olmaydi!)"
 
     panel_text = (
-        f"╔═══════════════════════════════════════╗\n"
-        f"   👑 **GURUH BOSHQARUV PANELI (ADMIN)** 🛡\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"👑 **GURUH BOSHQARUV PANELI (ADMIN)** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📍 **Guruh:** «{message.chat.title}»\n"
         f"🤖 **Bot maqomi:** {bot_status}\n\n"
         f"⚙️ **FAOL HIMOYA VA NAZORAT TIZIMLARI:**\n"
@@ -157,9 +156,8 @@ async def cb_open_settings_from_admin(call: CallbackQuery, bot: Bot) -> None:
     group = await db.get_or_create_group(call.message.chat.id)
     kb = get_settings_keyboard(group)
     await call.message.reply(
-        f"╔═══════════════════════════════════════╗\n"
-        f"   ⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📍 **Guruh:** «{call.message.chat.title}»\n\n"
         f"Quyidagi interaktiv tugmalar orqali botning xavfsizlik va nazorat funksiyalarini boshqaring:",
         reply_markup=kb,
@@ -178,9 +176,8 @@ async def cb_show_stats_admin(call: CallbackQuery, bot: Bot) -> None:
     from database.db import db as _db
     stats = await _db.get_group_stats(call.message.chat.id)
     await call.message.reply(
-        f"╔═══════════════════════════════════════╗\n"
-        f"   📊 **GURUH STATISTIKASI (ADMIN)** 📈\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"📊 **GURUH STATISTIKASI (ADMIN)** 📈\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📍 **Guruh:** «{call.message.chat.title}»\n\n"
         f"├ 💬 Jami xabarlar: **{stats.get('total_messages', 0):,}** ta\n"
         f"├ 👤 Jami a'zolar: **{stats.get('total_members', 0):,}** ta\n"
@@ -211,9 +208,8 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
         if current > 0:
             left = max(0, current - user_invites)
             await message.reply(
-                f"╔═══════════════════════════════════════╗\n"
-                f"   👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
-                f"╚═══════════════════════════════════════╝\n\n"
+                f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📌 Guruhda erkin yozish uchun har bir a'zo kamida **{current}** ta odam qo'shishi shart.\n\n"
                 f"├ 📊 Siz qo'shgan a'zolar: **{user_invites} / {current}** ta\n"
                 f"└ ➕ Qolgan: **{left}** ta yangi a'zo\n\n"
@@ -222,9 +218,8 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
             )
         else:
             await message.reply(
-                f"╔═══════════════════════════════════════╗\n"
-                f"   👥 **MAJBURIY A'ZO TALABI** 👥\n"
-                f"╚═══════════════════════════════════════╝\n\n"
+                f"👥 **MAJBURIY A'ZO TALABI** 👥\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Bu guruhda hozirda majburiy a'zo qo'shish talabi yo'q (barcha uchun erkin muloqot) ✨\n\n"
                 f"ℹ️ Agar siz guruh admini bo'lsangiz, talab o'rnatish uchun: `/odam [soni]`",
                 parse_mode="Markdown",
@@ -235,9 +230,8 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
     parts = (message.text or "").split()
     if len(parts) < 2 or not parts[1].isdigit():
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   👥 **MAJBURIY A'ZO TALABI SOZLASH** 👥\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"👥 **MAJBURIY A'ZO TALABI SOZLASH** 👥\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📌 Hozirgi o'rnatilgan talab: **{current} ta**\n\n"
             f"Har qanday son qo'yishingiz mumkin:\n"
             f"├ `/odam 5` — Har bir a'zo guruhda yozish uchun 5 ta odam qo'shishi shart bo'ladi.\n"
@@ -252,9 +246,8 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
 
     if count > 0:
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   👥 **MAJBURIY TAKLIF TALABI O'RNATILDI** ✅\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"👥 **MAJBURIY TAKLIF TALABI O'RNATILDI** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🎯 Yangi talab: **{count} ta odam qo'shish shart!**\n\n"
             f"├ 📌 Endi oddiy a'zolar guruhda yozishlari uchun kamida **{count}** ta do'stini taklif qilishlari shart.\n"
             f"├ 🚫 A'zo qo'shmaganlarning xabarlari avtomatik o'chiriladi va ogohlantirish yuboriladi.\n"
@@ -264,9 +257,8 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
         )
     else:
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   🔓 **MAJBURIY TAKLIF TALABI O'CHIRILDI** 🔓\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"🔓 **MAJBURIY TAKLIF TALABI O'CHIRILDI** 🔓\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"✅ Endi barcha guruh a'zolari erkin muloqot qilishi mumkin.\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
@@ -299,9 +291,8 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
             else ""
         )
         await message.reply(
-            f"╔═══════════════════════════════════╗\n"
-            f"   0️⃣ **BARCHA TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
-            f"╚═══════════════════════════════════╝\n\n"
+            f"0️⃣ **BARCHA TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📊 Jami o'chirilgan taklif qaydlari: **{deleted}** ta.{inv_note}\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
@@ -356,9 +347,8 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
         extra_note = "ℹ️ Ushbu a'zoning barcha takliflari 0 ga tushirildi."
 
     await message.reply(
-        f"╔═══════════════════════════════════╗\n"
-        f"   0️⃣ **TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
-        f"╚═══════════════════════════════════╝\n\n"
+        f"0️⃣ **TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 **A'zo:** {mention}\n"
         f"📊 **Oldingi qo'shgan odamlari:** **{old_invites}** ta\n"
         f"🔄 **Hozirgi takliflar:** **0** ta\n\n"
@@ -387,9 +377,8 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
         channels = await db.get_mandatory_channels(message.chat.id)
         if not channels:
             await message.reply(
-                f"╔═══════════════════════════════════════╗\n"
-                f"   📢 **HOMIY KANALLAR BOSHQARUVI** 📢\n"
-                f"╚═══════════════════════════════════════╝\n\n"
+                f"📢 **HOMIY KANALLAR BOSHQARUVI** 📢\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Guruhda hozircha majburiy homiy kanallar belgilanmagan.\n\n"
                 f"💡 **Yangi kanal qo'shish usullari:**\n"
                 f"├ `/kanal @kanal_username`\n"
@@ -402,9 +391,8 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
             return
 
         text = (
-            f"╔═══════════════════════════════════════╗\n"
-            f"   📢 **MAJBURIY HOMIY KANALLAR RO'YXATI** 📢\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"📢 **MAJBURIY HOMIY KANALLAR RO'YXATI** 📢\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📍 Guruh: «{message.chat.title}»\n\n"
         )
         for idx, ch in enumerate(channels, 1):
@@ -432,9 +420,8 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
     if sub_cmd in ("tozalash", "clear", "hammasini_ochir"):
         await db.clear_mandatory_channels(message.chat.id)
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   🗑 **HOMIY KANALLAR TOZALANDI** 🗑\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"🗑 **HOMIY KANALLAR TOZALANDI** 🗑\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"✅ Guruhning barcha majburiy kanallari muvaffaqiyatli o'chirildi.\n"
             f"Endi a'zolar obuna bo'lmasdan ham erkin yoza oladi.\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
@@ -506,9 +493,8 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
         )
 
         await status_msg.edit_text(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   📢 **HOMIY KANAL QO'SHILDI** ✅\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"📢 **HOMIY KANAL QO'SHILDI** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"├ 📢 **Kanal:** [{title}]({invite_link}) (`{channel_id}`)\n"
             f"└ 🤖 **Bot maqomi:** {'✅ Administrator' if bot_is_admin else '⚠️ Administrator emas'}\n\n"
             f"{admin_status_text}\n\n"
@@ -524,9 +510,8 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
         await db.add_mandatory_channel(message.chat.id, channel_id, title=title, invite_link=invite_link)
 
         await status_msg.edit_text(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   ⚠️ **KANAL RO'YXATGA QO'SHILDI** ⚠️\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"⚠️ **KANAL RO'YXATGA QO'SHILDI** ⚠️\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📍 Identifikator: `{channel_id}`\n\n"
             f"❗ **Eslatma:** Bot kanal a'zolarini va yuborilgan arizalarni tekshira olishi uchun botni ushbu kanalga **Administrator** qilib qo'shishingiz shart!",
             parse_mode="Markdown",
@@ -586,9 +571,8 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         )
         await db.record_punishment(message.chat.id, "mute")
         await message.reply(
-            f"╔═══════════════════════════════════╗\n"
-            f"   🔇 **YOZISHDAN CHEKLANDI (MUTE)** 🔇\n"
-            f"╚═══════════════════════════════════╝\n\n"
+            f"🔇 **YOZISHDAN CHEKLANDI (MUTE)** 🔇\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"⏳ **Muddat:** **{duration_str}**\n"
             f"📝 **Sabab:** {reason}\n"
@@ -633,9 +617,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         await bot.ban_chat_member(chat_id=message.chat.id, user_id=target.user_id)
         await db.record_punishment(message.chat.id, "ban")
         await message.reply(
-            f"╔═══════════════════════════════════╗\n"
-            f"   🚫 **GURUHDAN CHIQARILDI (BAN)** 🚫\n"
-            f"╚═══════════════════════════════════╝\n\n"
+            f"🚫 **GURUHDAN CHIQARILDI (BAN)** 🚫\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"📝 **Sabab:** {reason}\n"
             f"⚡️ **Holat:** Guruhdan chiqarildi va bloklandi\n"
@@ -1023,9 +1006,8 @@ async def cmd_settings(message: Message, bot: Bot) -> None:
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     kb = get_settings_keyboard(group)
     await message.reply(
-        f"╔═══════════════════════════════════════╗\n"
-        f"   ⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📍 **Guruh:** «{message.chat.title}»\n\n"
         f"Quyidagi interaktiv tugmalar orqali botning xavfsizlik va nazorat funksiyalarini boshqaring:",
         reply_markup=kb,
@@ -1081,9 +1063,8 @@ async def callback_refresh_settings(call: CallbackQuery, bot: Bot) -> None:
 async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   📥 **AVTO-ZAYAFKA QABUL TIZIMI** 🚀\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"📥 **AVTO-ZAYAFKA QABUL TIZIMI** 🚀\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"Ushbu funksiya orqali bot guruhingiz yoki kanalingizga qo'shilish so'rovi (Join Request) yuborgan a'zolarni **1 soniyada avtomatik qabul qiladi**!\n\n"
             f"🔹 **Guruh uchun sozlash:**\n"
             f"├ 1. Botni guruhingizga qo'shib, Administrator qiling.\n"
@@ -1132,9 +1113,8 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
         await db.update_group_setting(message.chat.id, "auto_approve_joins", new_val)
         if new_val == 1:
             await message.reply(
-                f"╔═══════════════════════════════════════╗\n"
-                f"   📥 **AVTO-ZAYAFKA QABUL YOQILDI** ✅\n"
-                f"╚═══════════════════════════════════════╝\n\n"
+                f"📥 **AVTO-ZAYAFKA QABUL YOQILDI** ✅\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"├ 📊 **Qabul qilingan arizalar:** `{approved_count}` ta\n"
                 f"├ 🤖 **Bot huquqi:** {rights_text}\n"
                 f"└ 👮‍♂️ **Admin:** {get_admin_name(message)}\n\n"
@@ -1144,9 +1124,8 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
             )
         else:
             await message.reply(
-                f"╔═══════════════════════════════════════╗\n"
-                f"   🛑 **AVTO-ZAYAFKA QABUL TO'XTATILDI** 🛑\n"
-                f"╚═══════════════════════════════════════╝\n\n"
+                f"🛑 **AVTO-ZAYAFKA QABUL TO'XTATILDI** 🛑\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Endi arizalarni adminlar qo'lda tasdiqlashi kerak bo'ladi.\n\n"
                 f"Qayta yoqish uchun: `/zayafka on`",
                 parse_mode="Markdown",
@@ -1171,9 +1150,8 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
     )
 
     await message.reply(
-        f"╔═══════════════════════════════════════╗\n"
-        f"   📥 **QO'SHILISH ARIZALARI (ZAYAFKA)** 🚀\n"
-        f"╚═══════════════════════════════════════╝\n\n"
+        f"📥 **QO'SHILISH ARIZALARI (ZAYAFKA)** 🚀\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"├ 📍 **Guruh:** «{message.chat.title}»\n"
         f"├ ⚡️ **Joriy holat:** {status_label}\n"
         f"├ 📊 **Qabul qilingan jami arizalar:** `{approved_count}` ta\n"
@@ -1309,9 +1287,8 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
         st = group.get("night_mode_start", "23:00")
         en = group.get("night_mode_end", "07:00")
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   🌙 **TUNGI REJIM SOZLAMALARI** 🔒\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"🌙 **TUNGI REJIM SOZLAMALARI** 🔒\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"├ 📍 **Guruh:** «{message.chat.title}»\n"
             f"├ ⚡️ **Joriy holat:** {status_txt}\n"
             f"└ ⏰ **Vaqt oralig'i:** `{st}` dan `{en}` gacha\n\n"
@@ -1334,9 +1311,8 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
         st = start_val or group.get("night_mode_start", "23:00")
         en = end_val or group.get("night_mode_end", "07:00")
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   🌙 **TUNGI REJIM ISHGA TUSHIRILDI** ✅\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"🌙 **TUNGI REJIM ISHGA TUSHIRILDI** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"⏰ **Amal qilish vaqti:** Har kuni soat **{st}** dan **{en}** gacha\n"
             f"🔒 Belgilangan vaqt oralig'ida guruh avtomatik yopiladi va tongda qayta ochiladi.\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
@@ -1359,9 +1335,8 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
             except Exception:
                 pass
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   ☀️ **TUNGI REJIM O'CHIRILDI** 🔓\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"☀️ **TUNGI REJIM O'CHIRILDI** 🔓\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"✅ Guruh endi 24 soat davomida ochiq holatda qoladi.\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
@@ -1369,9 +1344,8 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
     elif time_match:
         await db.set_night_mode(message.chat.id, enabled=1, start=start_val, end=end_val)
         await message.reply(
-            f"╔═══════════════════════════════════════╗\n"
-            f"   ⏰ **TUNGI REJIM VAQTI O'ZGARTIRILDI** ✅\n"
-            f"╚═══════════════════════════════════════╝\n\n"
+            f"⏰ **TUNGI REJIM VAQTI O'ZGARTIRILDI** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"⏰ Yangi vaqt oralig'i: **{start_val}** — **{end_val}**\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",

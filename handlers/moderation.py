@@ -330,9 +330,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         if deleted:
             if user_is_admin:
                 apk_alert_text = (
-                    f"╔══════════════════════════════════════╗\n"
-                    f"   🛡 **XAVFSIZLIK TIZIMI | KIBER-HIMOYA** 🛡\n"
-                    f"╚══════════════════════════════════════╝\n\n"
+                    f"🛡 **XAVFSIZLIK TIZIMI | KIBER-HIMOYA** 🛡\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"⚠️ **ADMIN TOMONIDAN .APK FAYL YUBORILDI!**\n\n"
                     f"👤 **Yuboruvchi:** {mention} (👑 Administrator)\n"
                     f"📁 **Fayl nomi:** `{safe_fname}`\n"
@@ -343,9 +342,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 )
             else:
                 apk_alert_text = (
-                    f"╔══════════════════════════════════════╗\n"
-                    f"   🛡 **XAVFSIZLIK TIZIMI | KIBER-HIMOYA** 🛡\n"
-                    f"╚══════════════════════════════════════╝\n\n"
+                    f"🛡 **XAVFSIZLIK TIZIMI | KIBER-HIMOYA** 🛡\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"🚨 **DIQQAT: ZARARLI .APK FAYL ANIQLANDI VA O'CHIRILDI!** 🗑\n\n"
                     f"👤 **Qoidabuzar:** {mention}\n"
                     f"📁 **Fayl nomi:** `{safe_fname}`\n"
@@ -374,9 +372,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             )
             rules_btn_kb = admin_req_kb_early
             apk_alert_text = (
-                f"╔══════════════════════════════════════════╗\n"
-                f"   🚨 **FAVQULODDA XAVF: VIRUS (APK) FAYL!** 🚨\n"
-                f"╚══════════════════════════════════════════╝\n\n"
+                f"🚨 **FAVQULODDA XAVF: VIRUS (APK) FAYL!** 🚨\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"👤 **Yuboruvchi:** {mention} ({sender_type})\n"
                 f"📁 **Xavfli fayl:** `{safe_fname}`\n\n"
                 f"🛑 **BARCHA GURUH A'ZOLARI DIQQATIGA (O'TA MUHIM!):**\n"
@@ -468,9 +465,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   📢 **HOMIY KANAL OBUNASI TALABI** 🔒\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"📢 **HOMIY KANAL OBUNASI TALABI** 🔒\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, guruhda yozish uchun avval quyidagi kanal(lar)ga a'zo bo'lishingiz lozim:\n\n"
                         f"{channel_list}\n\n"
                         f"✅ Kanalga obuna bo'lgach (yoki ariza yuborgach), **«A'zo bo'ldim»** tugmasini bosing!"
@@ -519,9 +515,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   ⚡️ **ANTI-FLOOD HIMOYA TIZIMI** ⚡️\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"⚡️ **ANTI-FLOOD HIMOYA TIZIMI** ⚡️\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, siz juda tez xabar yozdingiz (Flood spam)!\n"
                         f"⏳ **Guruh tinchligini saqlash maqsadida 15 daqiqaga yozishdan cheklandingiz (MUTE).**"
                     ),
@@ -541,9 +536,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🤖 **INLINE BOT REKLAMASI TAQIQI** 🤖\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🤖 **INLINE BOT REKLAMASI TAQIQI** 🤖\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"🚫 {mention}, guruhda inline botlar (@...) orqali xabar yuborish taqiqlangan!"
                 ),
                 parse_mode="Markdown",
@@ -564,9 +558,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🈲 **ANTI-RAID / SPAMBOT FILTRI** 🈲\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🈲 **ANTI-RAID / SPAMBOT FILTRI** 🈲\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"🚫 {mention}, guruhda arab/fors/xitoy yozuvlari bilan xabar yozish taqiqlangan!"
                 ),
                 parse_mode="Markdown",
@@ -586,9 +579,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🔄 **FORWARD XABAR TAQIQI** 🔄\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🔄 **FORWARD XABAR TAQIQI** 🔄\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"⚠️ {mention}, guruhda boshqa kanallardan yoki profillardan xabarlarni **forward (uzatish)** qilish taqiqlangan!"
                 ),
                 parse_mode="Markdown",
@@ -598,9 +590,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         else:
             await message.reply(
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🔄 **FORWARD XABAR ANIQLANDI** 🔄\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🔄 **FORWARD XABAR ANIQLANDI** 🔄\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"👤 Yuboruvchi: {mention}\n\n"
                     f"🤖 **Hurmatli Guruh Administratorlari!**\n"
                     f"Guruhdagi forward xabarlarni avtomatik o'chirib tozalashim uchun "
@@ -634,9 +625,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   👥 **MAJBURIY TAKLIF TALABI** 👥\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"👥 **MAJBURIY TAKLIF TALABI** 👥\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, siz guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
                         f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites}** ta\n"
                         f"➕ **Yana kerak:** **{left_needed}** ta yangi a'zo\n\n"
@@ -661,9 +651,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 )
                 warn_inv = await message.reply(
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   👥 **MAJBURIY TAKLIF TALABI** 👥\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"👥 **MAJBURIY TAKLIF TALABI** 👥\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
                         f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites}** ta\n"
                         f"➕ **Yana kerak:** **{left_needed}** ta yangi a'zo\n\n"
@@ -687,9 +676,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🎭 **STIKER VA GIF TAQIQI** 🎭\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🎭 **STIKER VA GIF TAQIQI** 🎭\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"🚫 {mention}, bu guruhda stiker va GIF larni yuborish taqiqlangan!\n"
                     f"💡 Iltimos, faqat matnli xabarlar orqali muloqot qiling. 😊"
                 ),
@@ -700,9 +688,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         else:
             await message.reply(
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🎭 **STIKER VA GIF ANIQLANDI** 🎭\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🎭 **STIKER VA GIF ANIQLANDI** 🎭\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"👤 Yuboruvchi: {mention}\n\n"
                     f"🤖 **Administratorlar diqqatiga:**\n"
                     f"Guruhda stiker va GIF larni avtomatik o'chirib turishim uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
@@ -721,9 +708,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🎙 **OVOZLI VA VIDEO XABAR TAQIQI** 🎙\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🎙 **OVOZLI VA VIDEO XABAR TAQIQI** 🎙\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"🚫 {mention}, bu guruhda ovozli xabar (voice) va dumaloq videolar yuborish taqiqlangan!\n"
                     f"💡 Iltimos, fikringizni matn ko'rinishida yozing. 😊"
                 ),
@@ -734,9 +720,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         else:
             await message.reply(
                 text=(
-                    f"╔═══════════════════════════════════╗\n"
-                    f"   🎙 **OVOZLI XABAR ANIQLANDI** 🎙\n"
-                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🎙 **OVOZLI XABAR ANIQLANDI** 🎙\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"👤 Yuboruvchi: {mention}\n\n"
                     f"🤖 **Administratorlar diqqatiga:**\n"
                     f"Guruhda ovozli xabarlarni avtomatik o'chirib turishim uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
@@ -764,9 +749,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"📢 **Kanal:** «{ch_title}»\n"
                         f"⚡️ **Sabab:** So'kinish va haqorat yuborilgani uchun!\n"
                         f"🔒 Ushbu kanal guruhda yozishdan butunlay bloklandi."
@@ -798,9 +782,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         notify_mute = await bot.send_message(
                             chat_id=message.chat.id,
                             text=(
-                                f"╔═══════════════════════════════════╗\n"
-                                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
-                                f"╚═══════════════════════════════════╝\n\n"
+                                f"🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                                 f"👤 **Qoidabuzar:** {mention}\n"
                                 f"⚡️ **Sabab:** So'kinish va haqorat qoidalarini ketma-ket buzgani uchun!\n"
                                 f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
@@ -815,9 +798,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, guruhda so'kinish va haqoratli so'zlar ishlatish qat'iyan taqiqlanadi!\n"
                         f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**\n"
                         f"💡 *Ogohlantirishlar 3 taga yetsa, 24 soatga guruhda yozishdan cheklanasiz!*"
@@ -829,9 +811,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             else:
                 await message.reply(
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"👤 Yuboruvchi: {mention}\n"
                         f"⚠️ Guruhda so'kinish va haqorat taqiqlanadi! ({warn_cnt}/{MAX_WARNS})\n\n"
                         f"🤖 **Administratorlar diqqatiga:**\n"
@@ -858,9 +839,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"📢 **Kanal:** «{ch_title}»\n"
                         f"⚡️ **Sabab:** Guruhda kanal orqali reklama va havola tarqatilgani uchun!\n"
                         f"🔒 Ushbu kanal guruhda yozishdan butunlay bloklandi."
@@ -893,9 +873,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         notify_mute = await bot.send_message(
                             chat_id=message.chat.id,
                             text=(
-                                f"╔═══════════════════════════════════╗\n"
-                                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
-                                f"╚═══════════════════════════════════╝\n\n"
+                                f"🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                                 f"👤 **Qoidabuzar:** {mention}\n"
                                 f"⚡️ **Sabab:** Ruxsatsiz havola tarqatgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
                                 f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
@@ -910,9 +889,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, guruhda har qanday havola (link) va reklama tarqatish qat'iyan taqiqlanadi!\n\n"
                         f"📢 Reklama bermoqchi bo'lsangiz, iltimos, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
                         f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
@@ -925,9 +903,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 # Bot admin bo'lmasa — reklama tarqatganga ogohlantirish beradi va adminlik so'raydi!
                 warn_msg = await message.reply(
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"👤 Yuboruvchi: {mention}\n"
                         f"⚠️ Guruhda har qanday havola (link) va reklama tarqatish taqiqlanadi!\n"
                         f"📢 Reklama bermoqchi bo'lsangiz, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
@@ -956,9 +933,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 **BEGONA KANAL BLOKLANDI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"📢 **Kanal:** «{ch_title}»\n"
                         f"⚡️ **Sabab:** Guruhda kanal orqali spam/reklama tarqatilgani uchun!\n"
                         f"🔒 Ushbu kanal guruhda yozishdan butunlay bloklandi."
@@ -991,9 +967,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         notify_mute = await bot.send_message(
                             chat_id=message.chat.id,
                             text=(
-                                f"╔═══════════════════════════════════╗\n"
-                                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
-                                f"╚═══════════════════════════════════╝\n\n"
+                                f"🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                                 f"👤 **Qoidabuzar:** {mention}\n"
                                 f"⚡️ **Sabab:** Ko'p spam xabar yuborgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
                                 f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
@@ -1008,9 +983,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"⚠️ {mention}, spam yoki reklama xabari aniqlangani sababli o'chirildi!\n"
                         f"📊 Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
                     ),
@@ -1022,9 +996,8 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 # Bot admin bo'lmasa — reklama tarqatganga javob yozadi va adminlik so'raydi!
                 await message.reply(
                     text=(
-                        f"╔═══════════════════════════════════╗\n"
-                        f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
-                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"👤 Yuboruvchi: {mention} (Ogohlantirish: {warn_cnt}/{MAX_WARNS})\n\n"
                         f"🤖 **Hurmatli Guruh Administratorlari!**\n"
                         f"Ushbu reklamalarni darhol o'chirib, qoidabuzarlarni cheklab turishim uchun "
