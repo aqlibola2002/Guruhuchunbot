@@ -101,9 +101,8 @@ async def check_night_mode(bot: Bot) -> None:
                         await bot.send_message(
                             chat_id=chat_id,
                             text=(
-                                f"╔══════════════════════════════╗\n"
-                                f"   🌙 **TUNGI REJIM FAOL** 😴\n"
-                                f"╚══════════════════════════════╝\n\n"
+                                f"🌙 **TUNGI REJIM FAOL** 😴\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
                                 f"Guruh tungi osoyishtalik rejimiga o'tkazildi.\n"
                                 f"⏰ **Sukunat vaqti:** `{start_t}` — `{end_t}`\n\n"
                                 f"✨ *Tongda soat {end_t} da guruh avtomatik qayta ochiladi. Barchaga xayrli tun!* 🌌"
@@ -128,9 +127,8 @@ async def check_night_mode(bot: Bot) -> None:
                         await bot.send_message(
                             chat_id=chat_id,
                             text=(
-                                f"╔══════════════════════════════╗\n"
-                                f"   ☀️ **XAYRLI TONG!** ☕️✨\n"
-                                f"╚══════════════════════════════╝\n\n"
+                                f"☀️ **XAYRLI TONG, DO'STLAR!** ☕️✨\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
                                 f"Tungi sukunat rejimi yakunlandi.\n"
                                 f"🔓 Guruhda samimiy muloqot qayta ochildi!\n\n"
                                 f"🌟 *Barchangizga mazmunli va omadli kun tilaymiz!* 😊"
