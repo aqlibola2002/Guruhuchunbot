@@ -30,6 +30,12 @@ Telegram guruhlarini avtomatlashtirish, reklama va spamlardan tozalash, qoidabuz
 | 📢 **/broadcast** | Admin e'lonini guruhga yuborish va avtomatik qadab (pin) qo'yish. |
 | ⏰ **Rejali xabarlar** | Har kuni ertalab (08:30) va kechqurun (22:30) guruhga avtomatik salomnomalar. |
 | ⚙️ **/settings** | Guruh himoya sozlamalarini (Antilink, Antispam, So'kinish filtri, Media taqiqlari, Majburiy taklif) inline tugmalar bilan boshqarish. |
+| 👑 **/panel** | Bot Egasi (Super Admin) boshqaruv paneli (Global statistika, Uptime, tizim holati). |
+| 💾 **/backup** | Ma'lumotlar bazasini (`group_bot.db`) bot egasiga Telegram orqali yuborish. |
+| 📢 **/send, /send_users, /send_all** | Barcha guruhlar, shaxsiy foydalanuvchilar yoki barchaga professional xabar tarqatish (rassilka). |
+| 🚫 **/ban_global, /unban_global** | Qoidabuzar va firibgarlarni bot bo'yicha global qora ro'yxatga kiritish va chiqarish. |
+| 🛠 **/profilaktika** | Botni texnik xizmat / profilaktika rejimiga o'tkazish. |
+| 🚪 **/chiq [chat_id]** | Botni masofadan turib begona guruhlardan chiqarish. |
 
 ---
 

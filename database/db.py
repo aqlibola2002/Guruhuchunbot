@@ -99,6 +99,17 @@ class Database:
                     PRIMARY KEY (chat_id, message_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(chat_id, user_id);
+
+                CREATE TABLE IF NOT EXISTS blacklist (
+                    user_id INTEGER PRIMARY KEY,
+                    reason TEXT DEFAULT '',
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS bot_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT DEFAULT ''
+                );
                 """
             )
             # Mavjud bazalar uchun yangi ustunlarni tekshirib qo'shish
@@ -132,6 +143,22 @@ class Database:
                 pass
             try:
                 await conn.execute("ALTER TABLE groups ADD COLUMN custom_welcome TEXT DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN auto_clean_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN auto_clean_interval TEXT DEFAULT '24soat'")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN auto_approve_joins INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN last_welcome_msg_id INTEGER DEFAULT 0")
             except Exception:
                 pass
             await conn.commit()
@@ -177,6 +204,7 @@ class Database:
             "profanity_enabled",
             "block_stickers",
             "block_voice",
+            "auto_approve_joins",
         }
         if setting_name not in allowed:
             return
@@ -198,6 +226,25 @@ class Database:
                 await conn.execute(
                     "UPDATE groups SET min_invites = 0 WHERE chat_id = ?",
                     (chat_id,),
+                )
+            await conn.commit()
+
+    async def set_auto_clean(self, chat_id: int, enabled: int | None = None, interval: str | None = None) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            if enabled is not None and interval is not None:
+                await conn.execute(
+                    "UPDATE groups SET auto_clean_enabled = ?, auto_clean_interval = ? WHERE chat_id = ?",
+                    (enabled, interval, chat_id),
+                )
+            elif enabled is not None:
+                await conn.execute(
+                    "UPDATE groups SET auto_clean_enabled = ? WHERE chat_id = ?",
+                    (enabled, chat_id),
+                )
+            elif interval is not None:
+                await conn.execute(
+                    "UPDATE groups SET auto_clean_interval = ? WHERE chat_id = ?",
+                    (interval, chat_id),
                 )
             await conn.commit()
 
@@ -246,6 +293,25 @@ class Database:
                 (chat_id,),
             )
             await conn.commit()
+
+    async def set_last_welcome_msg_id(self, chat_id: int, message_id: int) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE groups SET last_welcome_msg_id = ? WHERE chat_id = ?",
+                (message_id, chat_id),
+            )
+            await conn.commit()
+
+    async def get_last_welcome_msg_id(self, chat_id: int) -> int:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT last_welcome_msg_id FROM groups WHERE chat_id = ?", (chat_id,)
+            )
+            row = await cursor.fetchone()
+            if row and row["last_welcome_msg_id"]:
+                return row["last_welcome_msg_id"]
+            return 0
 
 
     async def get_all_active_groups(self) -> list[dict[str, Any]]:
@@ -317,6 +383,21 @@ class Database:
             rows = await cursor.fetchall()
             return [r[0] for r in rows]
 
+    async def get_recent_chat_message_ids(self, chat_id: int, limit: int = 100) -> list[int]:
+        """Guruhdagi oxirgi xabarlar IDlarini bazadan olish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                """
+                SELECT message_id FROM chat_messages
+                WHERE chat_id = ?
+                ORDER BY message_id DESC
+                LIMIT ?
+                """,
+                (chat_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
     async def delete_saved_chat_messages(self, chat_id: int, message_ids: list[int]) -> None:
         if not message_ids:
             return
@@ -346,6 +427,10 @@ class Database:
             )
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+    async def get_top_active_users(self, chat_id: int, limit: int = 10) -> list[dict[str, Any]]:
+        """get_top_users uchun moslik laqabi (alias)."""
+        return await self.get_top_users(chat_id, limit)
 
     async def get_user_by_username(self, chat_id: int, username: str) -> dict[str, Any] | None:
         clean_user = username.strip().lstrip("@").lower()
@@ -646,7 +731,7 @@ class Database:
     async def get_group_stats(self, chat_id: int) -> dict[str, Any]:
         today = datetime.date.today().isoformat()
         async with aiosqlite.connect(self.db_path) as conn:
-            # Jami foydalanuvchilar
+            # Jami foydalanuvchilar va xabarlar
             cursor = await conn.execute(
                 "SELECT COUNT(*), SUM(message_count) FROM users WHERE chat_id = ?",
                 (chat_id,),
@@ -665,9 +750,28 @@ class Database:
             today_mutes = row[2] if row else 0
             today_bans = row[3] if row else 0
 
+            # Guruhdagi barcha ogohlantirishlar
+            cursor = await conn.execute(
+                "SELECT SUM(warn_count) FROM warns WHERE chat_id = ?",
+                (chat_id,),
+            )
+            warns_row = await cursor.fetchone()
+            total_warns = warns_row[0] if warns_row and warns_row[0] else 0
+
+            # Guruhdagi jami takliflar (a'zo qo'shishlar)
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM user_invites WHERE chat_id = ?",
+                (chat_id,),
+            )
+            invites_row = await cursor.fetchone()
+            total_invites = invites_row[0] if invites_row and invites_row[0] else 0
+
             return {
                 "total_users": user_count or 0,
+                "total_members": user_count or 0,
                 "total_messages": total_msgs or 0,
+                "total_invites": total_invites,
+                "total_warns": total_warns,
                 "today_messages": today_msgs,
                 "today_warns": today_warns,
                 "today_mutes": today_mutes,
@@ -765,6 +869,101 @@ class Database:
             if kw in clean_text:
                 return faq["answer"]
         return None
+
+    # ── Super Admin Funksiyalari (Bot Egasi) ──────────────────────────
+    async def get_all_user_ids(self) -> list[int]:
+        """Barcha qayd etilgan foydalanuvchilar IDlari ro'yxati."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("SELECT DISTINCT user_id FROM users")
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows if r[0]]
+
+    async def get_all_active_groups_detailed(self) -> list[dict[str, Any]]:
+        """Barcha guruhlar ro'yxati va ulardagi a'zolar soni."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                """
+                SELECT g.chat_id, g.title, g.created_at,
+                       COUNT(DISTINCT u.user_id) as member_count,
+                       COALESCE(SUM(u.message_count), 0) as total_messages
+                FROM groups g
+                LEFT JOIN users u ON g.chat_id = u.chat_id
+                GROUP BY g.chat_id
+                ORDER BY member_count DESC, total_messages DESC
+                """
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    async def delete_group(self, chat_id: int) -> None:
+        """Guruhni bazadan butunlay o'chirish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("DELETE FROM groups WHERE chat_id = ?", (chat_id,))
+            await conn.execute("DELETE FROM users WHERE chat_id = ?", (chat_id,))
+            await conn.execute("DELETE FROM user_invites WHERE chat_id = ?", (chat_id,))
+            await conn.execute("DELETE FROM mandatory_channels WHERE group_chat_id = ?", (chat_id,))
+            await conn.commit()
+
+    async def add_to_blacklist(self, user_id: int, reason: str = "") -> bool:
+        """Foydalanuvchini global qora ro'yxatga qo'shish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO blacklist (user_id, reason)
+                    VALUES (?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET reason = excluded.reason
+                    """,
+                    (user_id, reason),
+                )
+                await conn.commit()
+                return True
+            except Exception:
+                return False
+
+    async def remove_from_blacklist(self, user_id: int) -> bool:
+        """Foydalanuvchini global qora ro'yxatdan chiqarish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("DELETE FROM blacklist WHERE user_id = ?", (user_id,))
+            await conn.commit()
+            return cursor.rowcount > 0
+
+    async def is_blacklisted(self, user_id: int) -> bool:
+        """Foydalanuvchi global qora ro'yxatda bormi?"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("SELECT 1 FROM blacklist WHERE user_id = ?", (user_id,))
+            row = await cursor.fetchone()
+            return row is not None
+
+    async def get_blacklist(self) -> list[dict[str, Any]]:
+        """Qora ro'yxatdagi barcha foydalanuvchilar."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("SELECT * FROM blacklist ORDER BY added_at DESC")
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    async def set_bot_setting(self, key: str, value: str) -> None:
+        """Botning global sozlamasini saqlash."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                """
+                INSERT INTO bot_settings (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, str(value)),
+            )
+            await conn.commit()
+
+    async def get_bot_setting(self, key: str, default: str = "") -> str:
+        """Botning global sozlamasini olish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,))
+            row = await cursor.fetchone()
+            return row[0] if row else default
+
 
 
 db = Database()

@@ -88,6 +88,7 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"{s(group.get('antispam_enabled', 1))} 🚫 Spam / Reklama tozalash\n"
         f"{s(group.get('antiforward_enabled', 1))} 🔄 Forward xabarlar bloklanishi\n"
         f"{s(group.get('channels_enabled', 1))} 📢 Majburiy kanallar tekshiruvi\n"
+        f"{s(group.get('auto_approve_joins', 1))} 📥 Zayafkalarni avtomatik qabul qilish\n"
         f"{inv_status} 👥 Majburiy a'zo qo'shish talabi\n"
         f"{s(group.get('welcome_enabled', 1))} 👋 Yangi a'zolarni kutib olish\n"
         f"{s(group.get('scheduled_enabled', 1))} ⏰ Rejali xabarlar\n"
@@ -95,6 +96,7 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 **Tezkor buyruqlar:**\n"
         f"• `/sozlamalar` — himoya sozlamalarini boshqarish\n"
+        f"• `/zayafka [on|off]` — qo'shilish arizalarini avto-qabul qilish\n"
         f"• `/setwelcome [matn]` — maxsus salomnoma o'rnatish\n"
         f"• `/kanal` — majburiy kanallarni boshqarish\n"
         f"• `/ogohlantir` — a'zoga ogohlantirish berish\n"
@@ -271,8 +273,10 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
             else ""
         )
         await message.reply(
-            f"0️⃣ **Guruhdagi barcha a'zolarning takliflari nolga tushirildi!**\n"
-            f"Jami o'chirilgan taklif qaydlari: **{deleted}** ta.{inv_note}\n\n"
+            f"╔═══════════════════════════════════╗\n"
+            f"   0️⃣ **BARCHA TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
+            f"╚═══════════════════════════════════╝\n\n"
+            f"📊 Jami o'chirilgan taklif qaydlari: **{deleted}** ta.{inv_note}\n\n"
             f"👮‍♂️ Admin: {message.from_user.full_name}",
             parse_mode="Markdown",
         )
@@ -326,7 +330,9 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
         extra_note = "ℹ️ Ushbu a'zoning barcha takliflari 0 ga tushirildi."
 
     await message.reply(
-        f"0️⃣ **Takliflar nolga tushirildi!**\n\n"
+        f"╔═══════════════════════════════════╗\n"
+        f"   0️⃣ **TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
+        f"╚═══════════════════════════════════╝\n\n"
         f"👤 **A'zo:** {mention}\n"
         f"📊 **Oldingi qo'shgan odamlari:** **{old_invites}** ta\n"
         f"🔄 **Hozirgi takliflar:** **0** ta\n\n"
@@ -524,10 +530,13 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
             await db.record_punishment(message.chat.id, "mute")
 
             await message.reply(
-                f"🚫 **{target.full_name}** ({warn_count}/{MAX_WARNS}) marta ogohlantirish oldi "
-                f"va **24 soatga** yozishdan cheklandi!\n"
-                f"📝 Sabab: {reason}\n"
-                f"👮‍♂️ Admin: {message.from_user.full_name}",
+                f"╔═══════════════════════════════════╗\n"
+                f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                f"╚═══════════════════════════════════╝\n\n"
+                f"👤 **Foydalanuvchi:** {target.full_name}\n"
+                f"⚡️ **Sabab:** {reason} ({warn_count}/{MAX_WARNS})\n"
+                f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**\n"
+                f"👮‍♂️ **Admin:** {message.from_user.full_name}",
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -535,10 +544,13 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
     else:
         left = MAX_WARNS - warn_count
         await message.reply(
-            f"⚠️ **{target.full_name}** ogohlantirildi! ({warn_count}/{MAX_WARNS})\n"
-            f"📝 Sabab: {reason}\n"
-            f"❗️ Yana {left} ta ogohlantirishdan keyin yozish cheklanadi.\n"
-            f"👮‍♂️ Admin: {message.from_user.full_name}",
+            f"╔═══════════════════════════════════╗\n"
+            f"   ⚠️ **OGOHLANTIRISH BERILDI** ⚠️\n"
+            f"╚═══════════════════════════════════╝\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"📝 **Sabab:** {reason}\n"
+            f"📊 **Ogohlantirish:** **{warn_count}/{MAX_WARNS}** (yana {left} ta qoldi)\n"
+            f"👮‍♂️ **Admin:** {message.from_user.full_name}",
             parse_mode="Markdown",
         )
 
@@ -595,10 +607,13 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         )
         await db.record_punishment(message.chat.id, "mute")
         await message.reply(
-            f"🔇 **{target.full_name}** yozishdan vaqtincha cheklandi!\n"
-            f"⏳ Muddat: **{duration_str}**\n"
-            f"📝 Sabab: {reason}\n"
-            f"👮‍♂️ Admin: {message.from_user.full_name}",
+            f"╔═══════════════════════════════════╗\n"
+            f"   🔇 **YOZISHDAN CHEKLANDI (MUTE)** 🔇\n"
+            f"╚═══════════════════════════════════╝\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"⏳ **Muddat:** **{duration_str}**\n"
+            f"📝 **Sabab:** {reason}\n"
+            f"👮‍♂️ **Admin:** {message.from_user.full_name}",
             parse_mode="Markdown",
         )
     except Exception as e:
@@ -639,9 +654,13 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         await bot.ban_chat_member(chat_id=message.chat.id, user_id=target.user_id)
         await db.record_punishment(message.chat.id, "ban")
         await message.reply(
-            f"🚫 **{target.full_name}** guruhdan chiqarildi va bloklandi (Ban)!\n"
-            f"📝 Sabab: {reason}\n"
-            f"👮‍♂️ Admin: {message.from_user.full_name}",
+            f"╔═══════════════════════════════════╗\n"
+            f"   🚫 **GURUHDAN CHIQARILDI (BAN)** 🚫\n"
+            f"╚═══════════════════════════════════╝\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"📝 **Sabab:** {reason}\n"
+            f"⚡️ **Holat:** Guruhdan chiqarildi va bloklandi\n"
+            f"👮‍♂️ **Admin:** {message.from_user.full_name}",
             parse_mode="Markdown",
         )
     except Exception as e:
@@ -697,8 +716,12 @@ async def cmd_unban_and_unmute(message: Message, bot: Bot) -> None:
     await db.reset_warns(message.chat.id, target.user_id)
 
     await message.reply(
-        f"🔓 **{target.full_name}** blokdan va barcha cheklovlardan ochildi! Endi guruhda bemalol yoza oladi.\n"
-        f"👮‍♂️ Admin: {message.from_user.full_name}",
+        f"╔═══════════════════════════════════╗\n"
+        f"   🔓 **CHEKLOV BEKOR QILINDI** 🔓\n"
+        f"╚═══════════════════════════════════╝\n\n"
+        f"👤 **Foydalanuvchi:** {target.full_name}\n"
+        f"✅ Blok, yozish cheklovi va barcha ogohlantirishlar olib tashlandi!\n"
+        f"👮‍♂️ **Admin:** {message.from_user.full_name}",
         parse_mode="Markdown",
     )
 
@@ -722,7 +745,36 @@ async def delete_in_batches(bot: Bot, chat_id: int, msg_ids: list[int]) -> int:
     return deleted
 
 
-# ── /tozala [Xabarlarni tozalash: a'zoga reply qilib yoki son ko'rsatib] ──
+def get_cleaner_keyboard(group: dict) -> InlineKeyboardMarkup:
+    enabled = group.get("auto_clean_enabled", 1) == 1
+    interval = group.get("auto_clean_interval", "24soat")
+
+    on_text = "ON ✅" if enabled else "ON"
+    off_text = "OFF" if enabled else "OFF ❌"
+
+    t24 = "⏰ 24soat ✅" if interval == "24soat" else "⏰ 24soat"
+    t7d = "🗓 1 hafta ✅" if interval in ("7kun", "1hafta") else "1 hafta"
+    t30d = "📅 1 oy ✅" if interval in ("30kun", "1oy") else "1 oy"
+
+    kb = [
+        [
+            InlineKeyboardButton(text=on_text, callback_data="cleaner_on"),
+            InlineKeyboardButton(text=off_text, callback_data="cleaner_off"),
+        ],
+        [
+            InlineKeyboardButton(text=t24, callback_data="cleaner_time_24soat"),
+            InlineKeyboardButton(text=t7d, callback_data="cleaner_time_1hafta"),
+            InlineKeyboardButton(text=t30d, callback_data="cleaner_time_1oy"),
+        ],
+        [
+            InlineKeyboardButton(text="🧹 Hozir tozalash (50 ta)", callback_data="cleaner_clean_50"),
+            InlineKeyboardButton(text="🗑 To'liq tozalash (100 ta)", callback_data="cleaner_clean_100"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+# ── /tozala [Guruhni tozalash: chiroyli progress bar va boshqaruv] ──────
 @router.message(Command("tozala", "tozalash", "clear", ignore_case=True))
 async def cmd_clear(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
@@ -734,60 +786,199 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
         await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
         return
 
-    # Adminning o'z /tozala buyruq xabarini o'chirish
+    # Adminning /tozala buyruq xabarini o'chirish
     try:
         await message.delete()
     except Exception:
         pass
 
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     parts = (message.text or "").split()
     custom_count: int | None = None
     if len(parts) > 1 and parts[1].isdigit():
         custom_count = min(int(parts[1]), 200)
 
-    # 1. AGAR BIROR A'ZONING XABARIGA REPLY QILIB YOZILGAN BO'LSA
+    # 1. AGAR A'ZOGA REPLY QILIB TOZALASH SO'RALSA
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
         target_name = target_user.full_name if target_user else "Foydalanuvchi"
         target_id = target_user.id if target_user else None
 
         limit = custom_count if custom_count else 100
+
+        # Animatsion progress xabari
+        prog_msg = await bot.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"👥 **GURUH tozalanmoqda...**\n\n"
+                f"⏳ (taxminan 3 soniya)\n\n"
+                f"🗑 **A'zo xabarlari:**  ▓▓▓▓▓▓▓▓░░ 80%\n"
+                f"🚫 **Reklama, Link:**   ▓▓▓▓▓▓▓░░░ 75%\n"
+                f"⚠️ **Nojo'ya so'z:**     ▓▓▓▓▓▓▓▓░░ 85%"
+            ),
+            parse_mode="Markdown",
+        )
+
         msg_ids = set()
-
-        # Reply qilingan xabarning o'zini qo'shish
         msg_ids.add(message.reply_to_message.message_id)
-
-        # Bazadan ushbu a'zoning barcha xabarlarini olish
         if target_id:
             saved_ids = await db.get_user_chat_messages(message.chat.id, target_id, limit=limit)
             msg_ids.update(saved_ids)
 
+        await asyncio.sleep(1.0)
         deleted = await delete_in_batches(bot, message.chat.id, list(msg_ids))
         if target_id:
             await db.delete_saved_chat_messages(message.chat.id, list(msg_ids))
 
-        notify = await bot.send_message(
-            chat_id=message.chat.id,
-            text=f"🧹 **{target_name}** ning **{deleted} ta xabari** muvaffaqiyatli tozalandi!",
-            parse_mode="Markdown",
+        final_text = (
+            f"✨ **GURUH MUVAFFAQIYATLI TOZALANDI!** 🧹\n\n"
+            f"👤 **A'zo:** [{target_name}](tg://user?id={target_id})\n\n"
+            f"🗑 **A'zo xabarlari:**  ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
+            f"🚫 **Reklama, Link:**   ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
+            f"⚠️ **Nojo'ya so'z:**     ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
+            f"📊 Jami **{deleted} ta xabar** tozalandi!\n"
+            f"👮‍♂️ Admin: {message.from_user.full_name}"
         )
-        asyncio.create_task(auto_delete_message(notify, 5))
+        try:
+            await prog_msg.edit_text(final_text, parse_mode="Markdown")
+        except Exception:
+            prog_msg = await bot.send_message(chat_id=message.chat.id, text=final_text, parse_mode="Markdown")
+
+        asyncio.create_task(auto_delete_message(prog_msg, AUTO_DELETE_NOTIFICATION_DELAY))
         return
 
-    # 2. AGAR REPLY QILINMAGAN BO'LSA — GURUHNING OXIRGI XABARLARINI TOZALASH
-    count = custom_count if custom_count else 10
-    current_msg_id = message.message_id
-    msg_ids = [current_msg_id - i for i in range(1, count + 1) if current_msg_id - i > 0]
+    # 2. AGAR PARAMETRSIZ YOZILSA — STANDART OXIRGI 30 TA XABARNI TOZALASH
+    if not custom_count:
+        custom_count = 30
 
-    deleted = await delete_in_batches(bot, message.chat.id, msg_ids)
-    await db.delete_saved_chat_messages(message.chat.id, msg_ids)
+    # 3. ANIMATSION TOZALASH VA XABARLARNI HAQIQATDA O'CHIRISH
+    await run_animated_cleanup(bot, message.chat.id, message.message_id, custom_count, message.from_user.full_name)
 
-    notify = await bot.send_message(
+
+# ── /tozalash_paneli [Avto-tozalash sozlamalari menyusi] ─────────────
+@router.message(Command("tozalash_paneli", "autoclean", ignore_case=True))
+async def cmd_cleaner_panel(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        return
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        return
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    panel_text = (
+        f"⚙️ **'{message.chat.title}' — Avto-tozalash boshqaruvi:**\n\n"
+        f"Quyidagi tugmalar orqali xabarlarni davriy tozalash rejimini yoqing yoki o'chiring:"
+    )
+    kb = get_cleaner_keyboard(group)
+    panel_msg = await bot.send_message(
         chat_id=message.chat.id,
-        text=f"🧹 Guruhdagi **{deleted} ta xabar** muvaffaqiyatli tozalandi!",
+        text=panel_text,
+        reply_markup=kb,
         parse_mode="Markdown",
     )
-    asyncio.create_task(auto_delete_message(notify, 5))
+    asyncio.create_task(auto_delete_message(panel_msg, 60))
+
+
+async def run_animated_cleanup(bot: Bot, chat_id: int, current_msg_id: int, count: int, admin_name: str) -> None:
+    step1_text = (
+        f"🧹 **Guruh xabarlari tozalanmoqda...**\n\n"
+        f"⏳ Oxirgi **{count} ta** xabar tekshirilmoqda va o'chirilmoqda...\n\n"
+        f"🗑 **Kirdi-Chiqdi:**  ▓▓▓▓▓▓▓▓░░ 85%\n"
+        f"🚫 **Reklama, Link:** ▓▓▓▓▓▓▓░░░ 75%\n"
+        f"⚠️ **Nojo'ya so'z:**   ▓▓▓▓▓▓▓▓░░ 85%\n"
+        f"🦠 **Zararli fayllar:** ▓▓▓▓▓▓▓▓▓░ 95%"
+    )
+    msg = await bot.send_message(chat_id=chat_id, text=step1_text, parse_mode="Markdown")
+
+    # Bazada qayd etilgan ID lar va ketma-ket ID larni to'plash
+    db_ids = await db.get_recent_chat_message_ids(chat_id, limit=count)
+    seq_ids = [current_msg_id - i for i in range(1, count + 1) if current_msg_id - i > 0]
+    all_msg_ids = list(set(db_ids + seq_ids))
+
+    await asyncio.sleep(0.8)
+
+    deleted = await delete_in_batches(bot, chat_id, all_msg_ids)
+    await db.delete_saved_chat_messages(chat_id, all_msg_ids)
+
+    final_text = (
+        f"✨ **GURUH MUVAFFAQIYATLI TOZALANDI!** 🧹\n\n"
+        f"🗑 **Kirdi-Chiqdi:**  ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
+        f"🚫 **Reklama, Link:** ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
+        f"⚠️ **Nojo'ya so'z:**   ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
+        f"🦠 **Zararli fayllar:** ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
+        f"📊 **Haqiqatda o'chirilgan xabarlar:** **{deleted}** ta\n"
+        f"👮‍♂️ **Admin:** {admin_name}"
+    )
+
+    try:
+        await msg.edit_text(final_text, parse_mode="Markdown")
+    except Exception:
+        pass
+
+    # Muvaffaqiyat bildirishnomasi 6 soniyadan so'ng avtomatik tozalanadi
+    asyncio.create_task(auto_delete_message(msg, 6))
+
+
+# ── Callbacklar: Avto-tozalash ON / OFF va vaqt tanlash ─────────────
+@router.callback_query(F.data.in_({"cleaner_on", "cleaner_off"}))
+async def cb_cleaner_toggle(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat guruh adminlari uchun!", show_alert=True)
+        return
+
+    new_val = 1 if call.data == "cleaner_on" else 0
+    await db.set_auto_clean(call.message.chat.id, enabled=new_val)
+    group = await db.get_or_create_group(call.message.chat.id)
+    kb = get_cleaner_keyboard(group)
+
+    status_str = "YOQILDI ✅" if new_val == 1 else "O'CHIRILDI ❌"
+    await call.answer(f"Avto-tozalash {status_str}")
+
+    try:
+        await call.message.edit_reply_markup(reply_markup=kb)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("cleaner_time_"))
+async def cb_cleaner_time(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat guruh adminlari uchun!", show_alert=True)
+        return
+
+    time_val = call.data.replace("cleaner_time_", "")
+    await db.set_auto_clean(call.message.chat.id, interval=time_val)
+    group = await db.get_or_create_group(call.message.chat.id)
+    kb = get_cleaner_keyboard(group)
+
+    await call.answer(f"Davriylik belgilandi: {time_val} ⏰")
+
+    try:
+        await call.message.edit_reply_markup(reply_markup=kb)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.in_({"cleaner_clean_50", "cleaner_clean_100"}))
+async def cb_cleaner_clean_now(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat guruh adminlari uchun!", show_alert=True)
+        return
+
+    count = 50 if call.data == "cleaner_clean_50" else 100
+    await call.answer("Tozalash boshlandi... 🧹")
+
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+
+    await run_animated_cleanup(bot, call.message.chat.id, call.message.message_id, count, call.from_user.full_name)
 
 
 
@@ -843,6 +1034,12 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=f"📢 Majburiy kanallar: {mark(group.get('channels_enabled', 1))}",
                 callback_data="toggle_channels",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"📥 Zayafkalarni avto-qabul: {mark(group.get('auto_approve_joins', 1))}",
+                callback_data="toggle_auto_approve",
             )
         ],
         [
@@ -904,6 +1101,9 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
     if raw in ("block_stickers", "block_voice"):
         setting_key = raw
         current_val = group.get(setting_key, 0)
+    elif raw == "auto_approve":
+        setting_key = "auto_approve_joins"
+        current_val = group.get(setting_key, 1)
     else:
         setting_key = raw + "_enabled"
         current_val = group.get(setting_key, 1)
@@ -924,6 +1124,52 @@ async def callback_refresh_settings(call: CallbackQuery, bot: Bot) -> None:
     group = await db.get_or_create_group(call.message.chat.id)
     await call.message.edit_reply_markup(reply_markup=get_settings_keyboard(group))
     await call.answer("Yangilandi! 🔄")
+
+
+# ── /zayafka [Guruhga qo'shilish arizalarini avtomatik qabul qilish] ──────
+@router.message(Command("zayafka", "zayafkalar", "autoapprove", ignore_case=True))
+async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    current_val = group.get("auto_approve_joins", 1)
+
+    parts = (message.text or "").split()
+    if len(parts) >= 2:
+        arg = parts[1].strip().lower()
+        if arg in ("on", "1", "ha", "yoq", "yoqish", "enable", "start"):
+            new_val = 1
+        elif arg in ("off", "0", "ochir", "ochirish", "disable", "stop"):
+            new_val = 0
+        else:
+            new_val = 0 if current_val == 1 else 1
+    else:
+        new_val = 0 if current_val == 1 else 1
+
+    await db.update_group_setting(message.chat.id, "auto_approve_joins", new_val)
+
+    if new_val == 1:
+        await message.reply(
+            "✅ **Guruhga qo'shilish arizalarini (Zayafka) avtomatik qabul qilish YOQILDI!** 📥\n\n"
+            "Endi yangi a'zolar guruhga kirish uchun so'rov (join request) yuborganida, bot ularni zudlik bilan avtomatik qabul qiladi va guruhda chiroyli salomnoma bilan kutib oladi.\n\n"
+            "ℹ️ *Eslatma: Bot guruhda administrator bo'lishi va unga 'Yangi a'zolarni taklif qilish / qabul qilish' huquqi berilgan bo'lishi shart.*\n\n"
+            "O'chirish uchun: `/zayafka off`",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply(
+            "🛑 **Guruhga qo'shilish arizalarini (Zayafka) avtomatik qabul qilish O'CHIRILDI!**\n\n"
+            "Endi adminlar so'rovlarni qo'lda ko'rib chiqishi kerak bo'ladi.\n\n"
+            "Qayta yoqish uchun: `/zayafka on`",
+            parse_mode="Markdown",
+        )
 
 
 # ── /setwelcome [Maxsus salomlashish matni o'rnatish] ───────────────

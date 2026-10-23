@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from aiogram import Router, Bot
+from aiogram import Router, Bot, F
 from aiogram.types import (
     Message,
     ChatPermissions,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    CallbackQuery,
 )
 
 from config import (
@@ -17,18 +19,97 @@ from config import (
     PROFANITY_KEYWORDS,
     WHITELISTED_LINKS,
     AUTO_DELETE_NOTIFICATION_DELAY,
+    APK_WARNING_NOTIFICATION_DELAY,
     MAX_WARNS,
 )
 from database.db import db
 from filters.admin_filter import is_admin, can_bot_delete
 
 router = Router(name="moderation")
+logger = logging.getLogger(__name__)
 
-# Linklarni aniqlash regexi
+# Linklarni aniqlash regexi (har qanday domen, vebsayt, Telegram havolasi va @username)
 LINK_PATTERN = re.compile(
-    r"(https?://\S+|t\.me/\S+|telegram\.me/\S+|telegram\.dog/\S+|@[a-zA-Z0-9_]{5,})",
+    r"(https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+|telegram\.dog/\S+|@[a-zA-Z0-9_]{4,}|\b[a-zA-Z0-9.-]+\.(?:com|uz|ru|net|org|io|me|info|biz|xyz|app|site|online|top|club|vip|live|pro|dev|store|shop|link|edu|gov)\b\S*)",
     re.IGNORECASE,
 )
+
+
+def safe_mention(full_name: str | None, user_id: int | None) -> str:
+    """Foydalanuvchi ismidagi qavslar va maxsus belgilarni tozalab xavfsiz Telegram Markdown linkini qaytaradi."""
+    name = (
+        (full_name or "Foydalanuvchi")
+        .replace("[", "(")
+        .replace("]", ")")
+        .replace("*", "")
+        .replace("_", " ")
+        .replace("`", "'")
+    )
+    if user_id:
+        return f"[{name}](tg://user?id={user_id})"
+    return name
+
+
+DANGEROUS_EXTENSIONS = (
+    ".apk", ".xapk", ".apks", ".ipa", ".bin",
+    ".exe", ".bat", ".cmd", ".msi", ".scr", ".vbs", ".jar", ".pif",
+    ".apk.1", ".apk.zip", ".apk.bin"
+)
+
+DANGEROUS_MIMES = (
+    "application/vnd.android.package-archive",
+    "application/x-android-package-archive",
+    "application/x-apk",
+    "application/apk",
+    "application/vnd.android",
+    "application/x-msdownload",
+    "application/x-executable",
+    "application/x-msdos-program",
+)
+
+
+def check_dangerous_file(message: Message) -> tuple[bool, str]:
+    """
+    Xabarda zararli .apk yoki virusli fayllar borligini 100% aniqlaydi.
+    Qaytaradi: (is_dangerous, file_name)
+    """
+    # 1. Document
+    if message.document:
+        doc_name = (message.document.file_name or "").lower().strip()
+        doc_mime = (message.document.mime_type or "").lower().strip()
+
+        # Fayl kengaytmasi bo'yicha
+        if any(doc_name.endswith(ext) for ext in DANGEROUS_EXTENSIONS) or ".apk" in doc_name:
+            return True, message.document.file_name or "APK dastur"
+
+        # Regex bo'yicha: nom ichida .apk yoki virus kengaytmasi bo'lsa
+        if re.search(r"\.(?:apk|xapk|apks|ipa|bin|exe|bat|cmd|msi|vbs|jar)(?:\.|\b|$)", doc_name, re.IGNORECASE):
+            return True, message.document.file_name or "APK dastur"
+
+        # MIME type bo'yicha
+        if any(mime in doc_mime for mime in DANGEROUS_MIMES) or ("android" in doc_mime and "package" in doc_mime):
+            return True, message.document.file_name or "Android APK dasturi"
+
+        if "application/octet-stream" in doc_mime and (".apk" in doc_name or not doc_name):
+            return True, message.document.file_name or "Noma'lum fayl (.apk)"
+
+    # 2. Audio va Video fayllar (niqoblangan APK lar)
+    if message.audio:
+        aud_name = (message.audio.file_name or "").lower().strip()
+        if any(aud_name.endswith(ext) for ext in DANGEROUS_EXTENSIONS) or ".apk" in aud_name:
+            return True, message.audio.file_name or "APK fayl (audio niqobi ostida)"
+
+    if message.video:
+        vid_name = (message.video.file_name or "").lower().strip()
+        if any(vid_name.endswith(ext) for ext in DANGEROUS_EXTENSIONS) or ".apk" in vid_name:
+            return True, message.video.file_name or "APK fayl (video niqobi ostida)"
+
+    # 3. Matn yoki rasm tavsifi (caption) da .apk havolasi yoki .apk fayl nomi
+    text_content = (message.text or message.caption or "").lower()
+    if text_content and re.search(r"(?:https?://\S+/[^\s]+\.apk|\b[\w\-.]+\.apk\b)", text_content, re.IGNORECASE):
+        return True, "APK virus havolasi / fayli"
+
+    return False, ""
 
 
 async def auto_delete_notification(msg: Message, delay: int = AUTO_DELETE_NOTIFICATION_DELAY) -> None:
@@ -69,17 +150,32 @@ def contains_spam(text: str) -> bool:
     return False
 
 
-def contains_links(text: str) -> bool:
-    """Xabarda ruxsat etilmagan havolalar bor-yo'qligini tekshirish."""
-    matches = LINK_PATTERN.findall(text)
-    if not matches:
-        return False
+def contains_links(message: Message) -> bool:
+    """Xabarda har qanday havola (link), @username yoki URL bor-yo'qligini tekshirish."""
+    text = (message.text or message.caption or "").strip()
 
-    # Oq ro'yxatdagi havolalar tekshiruvi
-    for match in matches:
-        is_whitelisted = any(w_link.lower() in match.lower() for w_link in WHITELISTED_LINKS)
-        if not is_whitelisted:
-            return True
+    # 1. Telegram entities tekshiruvi (yashirin yoki ochiq havolalar)
+    entities = (message.entities or []) + (message.caption_entities or [])
+    for ent in entities:
+        if ent.type in ("url", "text_link", "mention"):
+            if ent.type == "text_link" and ent.url:
+                if not any(w.lower() in ent.url.lower() for w in WHITELISTED_LINKS):
+                    return True
+            else:
+                try:
+                    sub = text.encode("utf-16-le")[ent.offset * 2 : (ent.offset + ent.length) * 2].decode("utf-16-le", errors="ignore")
+                    if not any(w.lower() in sub.lower() for w in WHITELISTED_LINKS):
+                        return True
+                except Exception:
+                    return True
+
+    # 2. Matn ichidagi har qanday havolalar va domenlar
+    matches = LINK_PATTERN.findall(text)
+    if matches:
+        for match in matches:
+            if not any(w.lower() in match.lower() for w in WHITELISTED_LINKS):
+                return True
+
     return False
 
 
@@ -100,6 +196,26 @@ async def process_group_message(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         return
 
+    # 0. Kirdi-chiqdi va barcha xizmat xabarlarini zudlik bilan o'chirish
+    if (
+        message.new_chat_members
+        or message.left_chat_member
+        or message.pinned_message
+        or message.video_chat_started
+        or message.video_chat_ended
+        or message.video_chat_participants_invited
+        or message.video_chat_scheduled
+        or message.new_chat_photo
+        or message.delete_chat_photo
+        or message.new_chat_title
+        or message.message_auto_delete_timer_changed
+    ):
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except Exception:
+            pass
+        return
+
     # Foydalanuvchi ma'lumotlari mavjud bo'lmasa qaytish
     if not message.from_user and not message.sender_chat:
         return
@@ -108,6 +224,15 @@ async def process_group_message(message: Message, bot: Bot) -> None:
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     user_id = message.from_user.id if message.from_user else None
     user_is_admin = await is_admin(bot, message.chat.id, user_id, message=message)
+
+    # 0. Global Qora Ro'yxat (Super Admin Blacklist) tekshiruvi
+    if message.from_user and not user_is_admin:
+        if await db.is_blacklisted(message.from_user.id):
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            except Exception:
+                pass
+            return
 
     # 1. Faollikni hisoblash (xabarlar sonini yozib borish) va xabar ID sini saqlash
     if message.from_user:
@@ -123,82 +248,81 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             message_id=message.message_id,
         )
 
-    # 🔒 VIRUS FAYL TEKSHIRUVI — ADMINLAR UCHUN HAM ISHLAYDI
-    is_dangerous_file_early = False
-    file_name_early = ""
-
-    if message.document:
-        doc_name = (message.document.file_name or "").lower().strip()
-        doc_mime = (message.document.mime_type or "").lower().strip()
-        if (
-            ".apk" in doc_name
-            or doc_name.endswith((".apk", ".xapk", ".apks", ".ipa", ".bin"))
-            or "android.package-archive" in doc_mime
-            or "application/vnd.android" in doc_mime
-            or ("application/octet-stream" in doc_mime and ".apk" in doc_name)
-        ):
-            is_dangerous_file_early = True
-            file_name_early = message.document.file_name or "APK fayl"
-
-    if not is_dangerous_file_early and message.audio:
-        audio_name = (message.audio.file_name or "").lower().strip()
-        if ".apk" in audio_name:
-            is_dangerous_file_early = True
-            file_name_early = message.audio.file_name or "APK fayl"
-
-    if not is_dangerous_file_early and message.video:
-        video_name = (message.video.file_name or "").lower().strip()
-        if ".apk" in video_name:
-            is_dangerous_file_early = True
-            file_name_early = message.video.file_name or "APK fayl"
-
-    if is_dangerous_file_early:
+    # 🔒 2. VIRUS (.APK VA BOSHQA ZARARLI) FAYLLAR TEKSHIRUVI (DOIM FAOL)
+    is_dangerous, file_name = check_dangerous_file(message)
+    if is_dangerous:
         sender_name = message.from_user.full_name if message.from_user else "Foydalanuvchi"
         sender_id = message.from_user.id if message.from_user else None
-        mention = f"[{sender_name}](tg://user?id={sender_id})" if sender_id else sender_name
+        mention = safe_mention(sender_name, sender_id)
         sender_type = "👑 Admin" if user_is_admin else "👤 A'zo"
 
+        # 1. Zararli faylni zudlik bilan o'chirish
         deleted = False
         try:
-            await message.delete()
+            await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
             deleted = True
-        except Exception:
+        except Exception as del_err:
+            logger.warning(f"Zararli faylni o'chirishda xatolik: {del_err}")
             deleted = False
 
-        if deleted:
-            warn_info = ""
-            if not user_is_admin and message.from_user:
-                warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Zararli APK fayl yuborish")
-                if warn_cnt >= MAX_WARNS:
-                    until_date = datetime.now(timezone.utc) + timedelta(hours=24)
-                    try:
-                        await bot.restrict_chat_member(
-                            chat_id=message.chat.id,
-                            user_id=message.from_user.id,
-                            permissions=ChatPermissions(can_send_messages=False),
-                            until_date=until_date,
-                        )
-                        await db.reset_warns(message.chat.id, message.from_user.id)
-                        warn_info = f"\n🚫 Siz {MAX_WARNS} ta ogohlantirish olganingiz sababli **24 soatga guruhda yozishdan cheklandingiz (MUTE)!**"
-                    except Exception:
-                        warn_info = f"\n⚠️ **Sizga ogohlantirish berildi:** {warn_cnt}/{MAX_WARNS}"
-                else:
-                    left = MAX_WARNS - warn_cnt
-                    warn_info = f"\n⚠️ **Sizga ogohlantirish berildi:** {warn_cnt}/{MAX_WARNS} (yana {left} tadan so'ng yozish cheklanadi)."
+        # 2. Qoidabuzarni 2 soatga yozishdan cheklash (mute)
+        mute_action_info = ""
+        if not user_is_admin and message.from_user:
+            until_date = datetime.now(timezone.utc) + timedelta(hours=2)
+            try:
+                await bot.restrict_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=message.from_user.id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                    until_date=until_date,
+                )
+                await db.record_punishment(message.chat.id, "mute")
+                mute_action_info = "   • 🔇 **Qoidabuzar 2 soatga yozishdan cheklandi (MUTE)!**\n"
+            except Exception as mute_err:
+                logger.warning(f"Mute qilishda xatolik: {mute_err}")
 
-            notify = await bot.send_message(
-                chat_id=message.chat.id,
-                text=(
-                    f"🚨 **XAVFSIZLIK: Zararli APK fayl aniqlandi va o'chirildi!** 🛡\n\n"
-                    f"🚫 {mention} ({sender_type}), siz yuborgan **«{file_name_early}»** fayli xavfli bo'lgani sababli guruhdan darhol o'chirildi!\n"
-                    f"{warn_info}\n\n"
-                    f"⚠️ **DIQQAT:** Telegram orqali tarqalayotgan noma'lum APK fayllar — profilingiz, bank kartalaringiz va SMS-kodlaringizni o'g'irlaydigan **troyan viruslari** hisoblanadi!\n"
-                    f"Guruh a'zolarining xavfsizligini ta'minlash maqsadida guruhda har qanday APK fayllarni yuborish qat'iyan taqiqlanadi."
-                ),
-                parse_mode="Markdown",
-            )
-            asyncio.create_task(auto_delete_notification(notify, 20))
-            return
+        rules_btn_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📜 Guruh Qoidalari", callback_data="btn_rules"),
+                ]
+            ]
+        )
+
+        safe_fname = (file_name or "APK fayl").replace("`", "'").replace("*", "")
+        if deleted:
+            if user_is_admin:
+                apk_alert_text = (
+                    f"╔══════════════════════════════════════╗\n"
+                    f"   🛡 **XAVFSIZLIK TIZIMI | KIBER-HIMOYA** 🛡\n"
+                    f"╚══════════════════════════════════════╝\n\n"
+                    f"⚠️ **ADMIN TOMONIDAN .APK FAYL YUBORILDI!**\n\n"
+                    f"👤 **Yuboruvchi:** {mention} (👑 Administrator)\n"
+                    f"📁 **Fayl nomi:** `{safe_fname}`\n"
+                    f"⚡️ **Ko'rilgan chora:** Guruh a'zolari xavfsizligi yuzasidan fayl o'chirildi! 🗑\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔒 Guruhda a'zolar xavfsizligini ta'minlash uchun har qanday `.apk` dasturlarni tarqatish qat'iyan man etiladi.\n"
+                    f"👮‍♂️ Guruh 24/7 kiber-himoya nazorati ostida ✅"
+                )
+            else:
+                apk_alert_text = (
+                    f"╔══════════════════════════════════════╗\n"
+                    f"   🛡 **XAVFSIZLIK TIZIMI | KIBER-HIMOYA** 🛡\n"
+                    f"╚══════════════════════════════════════╝\n\n"
+                    f"🚨 **DIQQAT: ZARARLI .APK FAYL ANIQLANDI VA O'CHIRILDI!** 🗑\n\n"
+                    f"👤 **Qoidabuzar:** {mention}\n"
+                    f"📁 **Fayl nomi:** `{safe_fname}`\n"
+                    f"⚡️ **Ko'rilgan tezkor choralar:**\n"
+                    f"   • 🗑 **Zararli fayl darhol guruhdan o'chirildi!**\n"
+                    f"{mute_action_info}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🛑 **BARCHA GURUH A'ZOLARI DIQQATIGA:**\n"
+                    f"Telegram orqali tarqalayotgan noma'lum `.apk` fayllar — bank kartalaridagi pullar, "
+                    f"SMS-kodlar va shaxsiy Telegram akkauntlarini o'g'irlaydigan **troyan viruslari** hisoblanadi!\n"
+                    f"🔒 **O'z xavfsizligingiz uchun notanish fayllarni aslo ochmang va telefoningizga o'rnatmang!**\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👮‍♂️ Guruh 24/7 kiber-himoya nazorati ostida ✅"
+                )
         else:
             bot_info_early = await bot.get_me()
             admin_req_kb_early = InlineKeyboardMarkup(
@@ -211,23 +335,39 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     ]
                 ]
             )
-            await message.reply(
-                text=(
-                    f"🚨🚨 **DIQQAT: GURUHDA XAVFLI VIRUS (APK) FAYL ANIQLANDI!** 🚨🚨\n\n"
-                    f"👤 **Yuboruvchi:** {mention} ({sender_type})\n"
-                    f"📁 **Fayl:** `{file_name_early}`\n\n"
-                    f"🛑 **BARCHA GURUH A'ZOLARI DIQQATIGA (MUHIM!):**\n"
-                    f"Ushbu faylni **ASLO OCHMANG, YUKLAMANG VA TELEFONINGIZGA O'RNATMANG!** ❌\n"
-                    f"Bu sizning bank kartalaringizdagi pullarni, SMS-kodlaringizni va Telegram profilingizni o'g'irlaydigan **troyan virusi** hisoblanadi!\n\n"
-                    f"👮‍♂️ **Guruh Administratorlari diqqatiga:**\n"
-                    f"Bot guruhda Administrator emasligi sababli ushbu xavfli faylni avtomatik o'chira olmadi!\n"
-                    f"1️⃣ Zudlik bilan yuqoridagi faylni guruhdan **qo'lda o'chirib tashlang**!\n"
-                    f"2️⃣ Bot bunday viruslarni o'zi tozalab turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
-                ),
-                parse_mode="Markdown",
-                reply_markup=admin_req_kb_early,
+            rules_btn_kb = admin_req_kb_early
+            apk_alert_text = (
+                f"╔══════════════════════════════════════════╗\n"
+                f"   🚨 **FAVQULODDA XAVF: VIRUS (APK) FAYL!** 🚨\n"
+                f"╚══════════════════════════════════════════╝\n\n"
+                f"👤 **Yuboruvchi:** {mention} ({sender_type})\n"
+                f"📁 **Xavfli fayl:** `{safe_fname}`\n\n"
+                f"🛑 **BARCHA GURUH A'ZOLARI DIQQATIGA (O'TA MUHIM!):**\n"
+                f"Ushbu faylni **ASLO OCHMANG, YUKLAMANG VA TELEFONINGIZGA O'RNATMANG!** ❌\n"
+                f"Bu profilingiz va bank kartalaringizni o'g'irlaydigan **troyan virusi** hisoblanadi!\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"ℹ️ **Eslatma:** Telegram qoidasiga ko'ra, agar yuboruvchi Guruh Egasi (Owner) bo'lsa yoki botga 'Xabarlarni o'chirish' adminlik huquqi berilmagan bo'lsa, bot bu xabarni o'chira olmaydi.\n"
+                f"1️⃣ Zudlik bilan faylni guruhdan **qo'lda o'chirib tashlang**!\n"
+                f"2️⃣ Bot bunday viruslarni o'zi tozalab turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
             )
-            return
+
+        try:
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=apk_alert_text,
+                parse_mode="Markdown",
+                reply_markup=rules_btn_kb,
+            )
+        except Exception:
+            clean_plain = apk_alert_text.replace("*", "").replace("`", "").replace("_", "")
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=clean_plain,
+                reply_markup=rules_btn_kb,
+            )
+
+        asyncio.create_task(auto_delete_notification(notify, APK_WARNING_NOTIFICATION_DELAY))
+        return
 
     # ❗ AGAR FOYDALANUVCHI GURUH ADMINI BO'LSA — BOSHQA TEKSHIRUVLARGA TEGINILMAYDI
     if user_is_admin:
@@ -256,10 +396,10 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     continue
 
             if not_joined:
-                mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
+                mention = safe_mention(message.from_user.full_name, message.from_user.id)
                 # Xabarni o'chirish
                 try:
-                    await message.delete()
+                    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
                 except Exception:
                     pass
 
@@ -322,24 +462,31 @@ async def process_group_message(message: Message, bot: Bot) -> None:
 
     # 3. Forward (Uzatilgan) xabarlarni nazorat qilish va o'chirish (Anti-Forward)
     if group.get("antiforward_enabled", 1) == 1 and is_forwarded_message(message):
-        mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})" if message.from_user else "Foydalanuvchi"
+        mention = safe_mention(message.from_user.full_name, message.from_user.id) if message.from_user else "Foydalanuvchi"
         if bot_can_delete_msg:
             try:
-                await message.delete()
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
             except Exception:
                 pass
 
             notify = await bot.send_message(
                 chat_id=message.chat.id,
-                text=f"⚠️ {mention}, guruhda boshqa kanallardan yoki profillardan xabarlarni **forward (uzatish)** qilish taqiqlangan!",
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🔄 **FORWARD XABAR TAQIQI** 🔄\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"⚠️ {mention}, guruhda boshqa kanallardan yoki profillardan xabarlarni **forward (uzatish)** qilish taqiqlangan!"
+                ),
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_notification(notify, 7))
+            asyncio.create_task(auto_delete_notification(notify))
             return
         else:
             await message.reply(
                 text=(
-                    f"⚠️ **DIQQAT: Guruhda forward xabar aniqlandi!**\n\n"
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🔄 **FORWARD XABAR ANIQLANDI** 🔄\n"
+                    f"╚═══════════════════════════════════╝\n\n"
                     f"👤 Yuboruvchi: {mention}\n\n"
                     f"🤖 **Hurmatli Guruh Administratorlari!**\n"
                     f"Guruhdagi forward xabarlarni avtomatik o'chirib tozalashim uchun "
@@ -359,7 +506,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
         user_invites = await db.get_user_invites(message.chat.id, message.from_user.id)
         if user_invites < min_invites:
             left_needed = min_invites - user_invites
-            mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
+            mention = safe_mention(message.from_user.full_name, message.from_user.id)
 
             deleted = False
             try:
@@ -373,15 +520,17 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 notify = await bot.send_message(
                     chat_id=message.chat.id,
                     text=(
-                        f"🚫 **DIQQAT: Guruhda yozish uchun a'zo qo'shishingiz shart!**\n\n"
-                        f"{mention}, siz guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
-                        f"👥 Siz qo'shgan a'zolar: **{user_invites} / {min_invites}** ta\n"
-                        f"➕ Yana **{left_needed}** ta do'stingizni taklif qiling!\n\n"
-                        f"💡 A'zolar qo'shganingizdan so'ng guruhda bemalol yoza olasiz."
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   👥 **MAJBURIY TAKLIF TALABI** 👥\n"
+                        f"╚═══════════════════════════════════╝\n\n"
+                        f"🚫 {mention}, siz guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
+                        f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites}** ta\n"
+                        f"➕ **Yana kerak:** **{left_needed}** ta yangi a'zo\n\n"
+                        f"💡 Do'stlaringizni guruhga qo'shing va erkin suhbatda bo'ling! 😊"
                     ),
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_notification(notify, 10))
+                asyncio.create_task(auto_delete_notification(notify))
                 return
             else:
                 # Bot admin bo'lmasa: xabarni o'chirmasdan a'zo qo'shish kerakligi haqida xabar yuboradi
@@ -396,20 +545,24 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         ]
                     ]
                 )
-                await message.reply(
+                warn_inv = await message.reply(
                     text=(
+                        f"╔═══════════════════════════════════╗\n"
+                        f"   👥 **MAJBURIY TAKLIF TALABI** 👥\n"
+                        f"╚═══════════════════════════════════╝\n\n"
                         f"🚫 {mention}, guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
-                        f"👥 Siz qo'shgan a'zolar: **{user_invites} / {min_invites}** ta\n"
-                        f"➕ Yana **{left_needed}** ta do'stingizni taklif qiling!\n\n"
+                        f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites}** ta\n"
+                        f"➕ **Yana kerak:** **{left_needed}** ta yangi a'zo\n\n"
                         f"🤖 **Administratorlar diqqatiga:** Bot ushbu qoidani to'liq nazorat qilishi va a'zo qo'shmaganlarning xabarlarini avtomatik o'chirib turishi uchun botga guruhda **Administrator (Admin)** huquqini bering! 🛡"
                     ),
                     parse_mode="Markdown",
                     reply_markup=admin_req_kb,
                 )
+                asyncio.create_task(auto_delete_notification(warn_inv))
                 return
 
     # 5. Media filtrlari (Stiker/GIF va Ovozli/Dumaloq video cheklovi)
-    mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})" if message.from_user else "Foydalanuvchi"
+    mention = safe_mention(message.from_user.full_name, message.from_user.id) if message.from_user else "Foydalanuvchi"
 
     if group.get("block_stickers", 0) == 1 and (message.sticker or message.animation):
         if bot_can_delete_msg:
@@ -419,14 +572,27 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 pass
             notify = await bot.send_message(
                 chat_id=message.chat.id,
-                text=f"🎭 {mention}, guruhda stiker va GIF lar yuborish taqiqlangan!",
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🎭 **STIKER VA GIF TAQIQI** 🎭\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🚫 {mention}, bu guruhda stiker va GIF larni yuborish taqiqlangan!\n"
+                    f"💡 Iltimos, faqat matnli xabarlar orqali muloqot qiling. 😊"
+                ),
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_notification(notify, 6))
+            asyncio.create_task(auto_delete_notification(notify))
             return
         else:
             await message.reply(
-                text=f"🎭 {mention}, guruhda stiker va GIF lar taqiqlangan!",
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🎭 **STIKER VA GIF ANIQLANDI** 🎭\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"👤 Yuboruvchi: {mention}\n\n"
+                    f"🤖 **Administratorlar diqqatiga:**\n"
+                    f"Guruhda stiker va GIF larni avtomatik o'chirib turishim uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
+                ),
                 parse_mode="Markdown",
                 reply_markup=admin_req_kb,
             )
@@ -440,14 +606,27 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 pass
             notify = await bot.send_message(
                 chat_id=message.chat.id,
-                text=f"🎙 {mention}, guruhda ovozli xabar (voice) va dumaloq video yuborish taqiqlangan!",
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🎙 **OVOZLI VA VIDEO XABAR TAQIQI** 🎙\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🚫 {mention}, bu guruhda ovozli xabar (voice) va dumaloq videolar yuborish taqiqlangan!\n"
+                    f"💡 Iltimos, fikringizni matn ko'rinishida yozing. 😊"
+                ),
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_notification(notify, 6))
+            asyncio.create_task(auto_delete_notification(notify))
             return
         else:
             await message.reply(
-                text=f"🎙 {mention}, guruhda ovozli va video xabarlar taqiqlangan!",
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🎙 **OVOZLI XABAR ANIQLANDI** 🎙\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"👤 Yuboruvchi: {mention}\n\n"
+                    f"🤖 **Administratorlar diqqatiga:**\n"
+                    f"Guruhda ovozli xabarlarni avtomatik o'chirib turishim uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
+                ),
                 parse_mode="Markdown",
                 reply_markup=admin_req_kb,
             )
@@ -475,11 +654,19 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         until_date=until_date,
                     )
                     await db.reset_warns(message.chat.id, message.from_user.id)
-                    await bot.send_message(
+                    notify_mute = await bot.send_message(
                         chat_id=message.chat.id,
-                        text=f"🚫 {mention} ko'p so'kingani va qoidalarni buzgani sababli 24 soatga guruhda yozishdan cheklandi!",
+                        text=(
+                            f"╔═══════════════════════════════════╗\n"
+                            f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                            f"╚═══════════════════════════════════╝\n\n"
+                            f"👤 **Qoidabuzar:** {mention}\n"
+                            f"⚡️ **Sabab:** So'kinish va haqorat qoidalarini ketma-ket buzgani uchun!\n"
+                            f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
+                        ),
                         parse_mode="Markdown",
                     )
+                    asyncio.create_task(auto_delete_notification(notify_mute))
                     return
                 except Exception:
                     pass
@@ -487,27 +674,37 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"🤬 {mention}, guruhda so'kinish va haqoratli so'zlar ishlatish qat'iyan taqiqlanadi!\n"
-                    f"⚠️ Ogohlantirish: {warn_cnt}/{MAX_WARNS}"
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🚫 {mention}, guruhda so'kinish va haqoratli so'zlar ishlatish qat'iyan taqiqlanadi!\n"
+                    f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**\n"
+                    f"💡 *Ogohlantirishlar 3 taga yetsa, 24 soatga guruhda yozishdan cheklanasiz!*"
                 ),
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_notification(notify, 7))
+            asyncio.create_task(auto_delete_notification(notify))
             return
         else:
             await message.reply(
                 text=(
-                    f"🤬 {mention}, guruhda so'kinish va haqorat taqiqlanadi!\n"
-                    f"⚠️ Ogohlantirish: {warn_cnt}/{MAX_WARNS}"
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🤬 **NOJO'YA SO'Z ANIQLANDI** 🤬\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"👤 Yuboruvchi: {mention}\n"
+                    f"⚠️ Guruhda so'kinish va haqorat taqiqlanadi! ({warn_cnt}/{MAX_WARNS})\n\n"
+                    f"🤖 **Administratorlar diqqatiga:**\n"
+                    f"Bot bunday xabarlarni o'zi tozalab turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
                 ),
                 parse_mode="Markdown",
                 reply_markup=admin_req_kb,
             )
             return
 
-    # 7. Begona havolalar (Linklar) nazorati
-    if group.get("antilink_enabled", 1) == 1 and contains_links(text):
-        mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
+    # 7. Begona havolalar (Har qanday havola va reklama) nazorati
+    if group.get("antilink_enabled", 1) == 1 and contains_links(message):
+        mention = safe_mention(message.from_user.full_name if message.from_user else None, message.from_user.id if message.from_user else None)
+        warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Ruxsatsiz havola / Reklama")
 
         if bot_can_delete_msg:
             try:
@@ -515,32 +712,69 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             except Exception:
                 pass
 
+            if warn_cnt >= MAX_WARNS:
+                until_date = datetime.now(timezone.utc) + timedelta(hours=24)
+                try:
+                    await bot.restrict_chat_member(
+                        chat_id=message.chat.id,
+                        user_id=message.from_user.id,
+                        permissions=ChatPermissions(can_send_messages=False),
+                        until_date=until_date,
+                    )
+                    await db.reset_warns(message.chat.id, message.from_user.id)
+                    notify_mute = await bot.send_message(
+                        chat_id=message.chat.id,
+                        text=(
+                            f"╔═══════════════════════════════════╗\n"
+                            f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                            f"╚═══════════════════════════════════╝\n\n"
+                            f"👤 **Qoidabuzar:** {mention}\n"
+                            f"⚡️ **Sabab:** Ruxsatsiz havola tarqatgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
+                            f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    asyncio.create_task(auto_delete_notification(notify_mute))
+                    return
+                except Exception:
+                    pass
+
             notify = await bot.send_message(
                 chat_id=message.chat.id,
-                text=f"⚠️ {mention}, guruhda begona havolalar (linklar) tarqatish taqiqlangan!",
+                text=(
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"🚫 {mention}, guruhda har qanday havola (link) va reklama tarqatish qat'iyan taqiqlanadi!\n\n"
+                    f"📢 Reklama bermoqchi bo'lsangiz, iltimos, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
+                    f"⚠️ Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
+                ),
                 parse_mode="Markdown",
             )
             asyncio.create_task(auto_delete_notification(notify))
             return
         else:
             # Bot admin bo'lmasa — reklama tarqatganga ogohlantirish beradi va adminlik so'raydi!
-            await message.reply(
+            warn_msg = await message.reply(
                 text=(
-                    f"⚠️ **DIQQAT: Guruhda begona havola (link) aniqlandi!**\n\n"
-                    f"👤 Yuboruvchi: {mention}\n\n"
-                    f"🤖 **Hurmatli Guruh Administratorlari!**\n"
-                    f"Guruhdagi bunday begona reklamalarni avtomatik o'chirib tozalashim uchun "
-                    f"menga guruh sozlamalaridan **Administrator (Admin)** huquqini bering! 🛡\n"
-                    f"✅ *Kerakli huquq: Xabarlarni o'chirish.*"
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🚫 **REKLAMA VA HAVOLA TAQIQI** 🚫\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"👤 Yuboruvchi: {mention}\n"
+                    f"⚠️ Guruhda har qanday havola (link) va reklama tarqatish taqiqlanadi!\n"
+                    f"📢 Reklama bermoqchi bo'lsangiz, **guruh administratorlariga** murojaat qiling! 👮‍♂️🤝\n\n"
+                    f"🤖 **Administratorlar diqqatiga:**\n"
+                    f"Bot havolalarni avtomatik o'chirib turishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
                 ),
                 parse_mode="Markdown",
                 reply_markup=admin_req_kb,
             )
+            asyncio.create_task(auto_delete_notification(warn_msg))
             return
 
     # 8. Spam va Reklama nazorati
     if group.get("antispam_enabled", 1) == 1 and contains_spam(text):
-        mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
+        mention = safe_mention(message.from_user.full_name if message.from_user else None, message.from_user.id if message.from_user else None)
         warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, "Spam/Reklama")
 
         if bot_can_delete_msg:
@@ -559,11 +793,19 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         until_date=until_date,
                     )
                     await db.reset_warns(message.chat.id, message.from_user.id)
-                    await bot.send_message(
+                    notify_mute = await bot.send_message(
                         chat_id=message.chat.id,
-                        text=f"🚫 {mention} ko'p reklama tarqatgani sababli 24 soatga guruhda yozishdan cheklandi!",
+                        text=(
+                            f"╔═══════════════════════════════════╗\n"
+                            f"   🔇 **QOIDABUZAR CHEKLANDI (MUTE)** 🔇\n"
+                            f"╚═══════════════════════════════════╝\n\n"
+                            f"👤 **Qoidabuzar:** {mention}\n"
+                            f"⚡️ **Sabab:** Ko'p spam xabar yuborgani uchun ({MAX_WARNS}/{MAX_WARNS})\n"
+                            f"⏳ **Jazo:** **24 soatga guruhda yozishdan cheklandi!**"
+                        ),
                         parse_mode="Markdown",
                     )
+                    asyncio.create_task(auto_delete_notification(notify_mute))
                     return
                 except Exception:
                     pass
@@ -571,8 +813,11 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"🛡️ {mention}, spam yoki reklama xabari aniqlangani sababli o'chirildi!\n"
-                    f"⚠️ Ogohlantirish: {warn_cnt}/{MAX_WARNS}"
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
+                    f"╚═══════════════════════════════════╝\n\n"
+                    f"⚠️ {mention}, spam yoki reklama xabari aniqlangani sababli o'chirildi!\n"
+                    f"📊 Ogohlantirish: **{warn_cnt}/{MAX_WARNS}**"
                 ),
                 parse_mode="Markdown",
             )
@@ -582,7 +827,9 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             # Bot admin bo'lmasa — reklama tarqatganga javob yozadi va adminlik so'raydi!
             await message.reply(
                 text=(
-                    f"🛡️ **DIQQAT: Reklama yoki spam xabari aniqlandi!**\n\n"
+                    f"╔═══════════════════════════════════╗\n"
+                    f"   🛡️ **ANTISPAM HIMOYA TIZIMI** 🛡️\n"
+                    f"╚═══════════════════════════════════╝\n\n"
                     f"👤 Yuboruvchi: {mention} (Ogohlantirish: {warn_cnt}/{MAX_WARNS})\n\n"
                     f"🤖 **Hurmatli Guruh Administratorlari!**\n"
                     f"Ushbu reklamalarni darhol o'chirib, qoidabuzarlarni cheklab turishim uchun "
@@ -592,6 +839,13 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 parse_mode="Markdown",
                 reply_markup=admin_req_kb,
             )
+            return
+
+    # 9. FAQ (Avto-javoblar) tekshiruvi
+    if text:
+        faq_ans = await db.match_faq(message.chat.id, text)
+        if faq_ans:
+            await message.reply(faq_ans)
             return
 
 

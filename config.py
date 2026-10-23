@@ -24,12 +24,19 @@ ADMIN_IDS: list[int] = [
 # Ma'lumotlar bazasi
 DATA_DIR: Path = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH: Path = DATA_DIR / "group_bot.db"
+_env_db_path = os.getenv("DB_PATH", "").strip()
+if _env_db_path:
+    DB_PATH: Path = BASE_DIR / _env_db_path if not os.path.isabs(_env_db_path) else Path(_env_db_path)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+else:
+    DB_PATH: Path = DATA_DIR / "group_bot.db"
 
 # Guruh sozlamalari (Standart)
 MAX_WARNS: int = int(os.getenv("MAX_WARNS", "3"))
 DEFAULT_MUTE_SECONDS: int = int(os.getenv("DEFAULT_MUTE_SECONDS", "3600"))  # 1 soat
-AUTO_DELETE_NOTIFICATION_DELAY: int = 7  # Bildirishnomalarni 7 soniyada o'chirish
+AUTO_DELETE_NOTIFICATION_DELAY: int = 15  # Bot xabarlari 15 soniyada avtomatik o'chiriladi
+WELCOME_NOTIFICATION_DELAY: int = 25  # Xush kelibsiz xabari 25 soniyada tozalanadi
+APK_WARNING_NOTIFICATION_DELAY: int = 30  # APK virus ogohlantirishi 30 soniyada tozalanadi
 
 # Taqiqlangan spam so'zlar ro'yxati
 SPAM_KEYWORDS: list[str] = [

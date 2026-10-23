@@ -38,8 +38,9 @@ async def resolve_target(message: Message) -> TargetResult:
         )
 
     # 2. Text mention (Telegram entity orqali to'g'ridan-to'g'ri foydalanuvchi obyekti)
-    if message.entities:
-        for ent in message.entities:
+    all_entities = (message.entities or []) + (message.caption_entities or [])
+    if all_entities:
+        for ent in all_entities:
             if ent.type == MessageEntityType.TEXT_MENTION and ent.user:
                 return TargetResult(
                     user_id=ent.user.id,

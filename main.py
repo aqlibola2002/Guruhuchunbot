@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 
 # Windows konsolida emojilarni to'g'ri chiqarish
@@ -80,6 +81,7 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="start", description="🤖 Bot imkoniyatlari va ma'lumotlar"),
         BotCommand(command="admin", description="🛡 Bot holati va admin boshqaruv paneli"),
         BotCommand(command="sozlamalar", description="⚙️ Guruh himoya sozlamalari"),
+        BotCommand(command="zayafka", description="📥 Zayafkalarni avto-qabul qilish"),
         BotCommand(command="ogohlantir", description="⚠️ Ogohlantirish (@ id yoki reply)"),
         BotCommand(command="chekla", description="🔇 Yozishni cheklash (10m|2h|1d)"),
         BotCommand(command="hayda", description="🚫 Guruhdan chiqarish (Ban)"),
@@ -102,6 +104,10 @@ async def set_bot_commands_and_bio(bot: Bot) -> None:
         BotCommand(command="start", description="Bot imkoniyatlari va ishga tushirish"),
         BotCommand(command="yordam", description="Qo'llanma va buyruqlar"),
         BotCommand(command="panel", description="👑 Super Admin boshqaruv paneli"),
+        BotCommand(command="backup", description="💾 Baza zaxirasini yuklab olish (.db)"),
+        BotCommand(command="send", description="📢 Barcha guruhlarga xabar yuborish"),
+        BotCommand(command="send_users", description="👤 Barcha foydalanuvchilarga xabar yuborish"),
+        BotCommand(command="send_all", description="🌐 Hammaga xabar yuborish"),
     ]
 
     try:
@@ -183,7 +189,7 @@ async def main() -> None:
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         scheduler.shutdown(wait=False)
         if web_runner:

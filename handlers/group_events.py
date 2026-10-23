@@ -90,11 +90,11 @@ async def on_bot_added_to_chat(event: ChatMemberUpdated, bot: Bot) -> None:
 # ── Yangi a'zolar qo'shilganda ──────────────────────────────────────
 @router.message(F.new_chat_members)
 async def on_new_chat_members(message: Message, bot: Bot) -> None:
-    # 1. "Falonchi guruhga qo'shildi" xizmat xabarini o'chirish
+    # 1. "Falonchi guruhga qo'shildi" (Kirdi) xizmat xabarini darhol o'chirish
     try:
-        await message.delete()
-    except Exception:
-        pass
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception as e:
+        logger.debug(f"Kirdi xizmat xabarini o'chirishda: {e}")
 
     bot_info = await bot.get_me()
 
@@ -128,28 +128,63 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
                     f"📊 Jami takliflaringiz: **{total_invites}{req_text}** ta",
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_msg(invite_notify, 7))
+                asyncio.create_task(auto_delete_msg(invite_notify, 15))
 
         # Kutib olish xabari (agar yoqilgan bo'lsa)
         if group.get("welcome_enabled", 1) == 1:
-            mention = f"[{new_user.full_name}](tg://user?id={new_user.id})"
+            clean_name = (
+                (new_user.full_name or "Foydalanuvchi")
+                .replace("[", "(")
+                .replace("]", ")")
+                .replace("*", "")
+                .replace("_", " ")
+                .replace("`", "'")
+            )
+            mention = f"[{clean_name}](tg://user?id={new_user.id})"
             group_title = message.chat.title or "guruhimiz"
-            u_name = f"@{new_user.username}" if new_user.username else new_user.full_name
+            u_name = f"@{new_user.username}" if new_user.username else clean_name
+
+            # Oldingi yuborilgan salomlashish xabarini o'chirish (guruh toza turishi uchun)
+            old_welcome_id = await db.get_last_welcome_msg_id(message.chat.id)
+            if old_welcome_id:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=old_welcome_id)
+                except Exception:
+                    pass
+
+            # Guruh a'zolari soni va tavsifini olish
+            members_cnt = None
+            try:
+                members_cnt = await bot.get_chat_member_count(message.chat.id)
+            except Exception:
+                pass
+
+            chat_desc = ""
+            try:
+                chat_info = await bot.get_chat(message.chat.id)
+                chat_desc = chat_info.description or ""
+            except Exception:
+                pass
+
+            min_req = group.get("min_invites", 0)
+            if min_req > 0 and group.get("invites_enabled", 1) == 1:
+                req_info = f"• 👥 **Yozish talabi:** Guruhda yozish uchun kamida **{min_req} ta a'zo qo'shish shart**\n"
+            else:
+                req_info = "• 💬 **Yozish tartibi:** Barcha a'zolar uchun erkin muloqot\n"
+
+            desc_info = f"• 📝 **Tavsif:** _{chat_desc[:120]}_\n" if chat_desc else ""
+            members_info = f"• 👥 **Jami a'zolar:** **{members_cnt}** ta\n" if members_cnt else ""
 
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
-                        InlineKeyboardButton(text="📜 Guruh Qoidalari", callback_data="btn_rules"),
+                        InlineKeyboardButton(text="📜 Qoidalar", callback_data="btn_rules"),
+                        InlineKeyboardButton(text="📊 Takliflarim", callback_data="btn_my_invites"),
+                    ],
+                    [
                         InlineKeyboardButton(text="🏆 Faollar Reytingi", callback_data="btn_show_rating"),
                     ],
                 ]
-            )
-
-            min_req = group.get("min_invites", 0)
-            rules_hint = (
-                f"\n\n⚠️ **DIQQAT:** Guruhda xabar yozish uchun kamida **{min_req}** ta do'stingizni qo'shishingiz kerak!"
-                if min_req > 0
-                else ""
             )
 
             custom_tpl = await db.get_custom_welcome(message.chat.id)
@@ -159,39 +194,61 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
                     .replace("{title}", group_title)
                     .replace("{username}", u_name)
                     .replace("{first_name}", new_user.first_name or "")
+                    .replace("{members}", str(members_cnt or ""))
                 )
-                if "{rules}" in custom_tpl or "{qoidalar}" in custom_tpl:
-                    welcome_text = welcome_text.replace("{rules}", rules_hint).replace("{qoidalar}", rules_hint)
-                else:
-                    welcome_text += rules_hint
             else:
                 welcome_text = (
-                    f"╔══════════════════════════╗\n"
-                    f"   ✨ **XUSH KELIBSIZ!** ✨\n"
-                    f"╚══════════════════════════╝\n\n"
+                    f"╭───────────────✦───────────────╮\n"
+                    f"   ✨ **XUSH KELIBSIZ GURUHIMIZGA!** ✨\n"
+                    f"╰───────────────✦───────────────╯\n\n"
                     f"👋 **Assalomu alaykum, {mention}!**\n\n"
-                    f"🎉 **«{group_title}»** guruhimizga xush kelibsiz!\n"
-                    f"Sizni safimizda ko'rib turganimizdan g'oyat mamnunmiz! 🤝😊\n\n"
-                    f"💬 *Guruhimizda samimiy va do'stona muloqot qilishingizni tilaymiz!*{rules_hint}\n\n"
-                    f"Qoidalar bilan tanishish uchun quyidagi tugmani bosing 👇"
+                    f"🎉 **«{group_title}»** guruhimizga xush kelibsiz!\n\n"
+                    f"📋 **Guruh haqida ma'lumot:**\n"
+                    f"{members_info}"
+                    f"{desc_info}"
+                    f"{req_info}"
+                    f"• 🛡️ **Xavfsizlik:** Guruhda reklama, haqorat, so'kinish va viruslar qat'iyan taqiqlangan!\n\n"
+                    f"💬 *Marhamat, guruhimiz qoidalari bilan tanishib chiqing va samimiy suhbatda bo'ling!* 😊"
                 )
 
-            welcome_msg = await message.answer(
-                text=welcome_text,
-                parse_mode="Markdown",
-                reply_markup=kb,
-                disable_web_page_preview=True,
-            )
-            asyncio.create_task(auto_delete_msg(welcome_msg, 90))
+            try:
+                welcome_msg = await message.answer(
+                    text=welcome_text,
+                    parse_mode="Markdown",
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                clean_welcome = welcome_text.replace("*", "").replace("`", "").replace("_", "")
+                welcome_msg = await message.answer(
+                    text=clean_welcome,
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
+            await db.set_last_welcome_msg_id(message.chat.id, welcome_msg.message_id)
+            # 25 soniyadan so'ng salomlashish xabari avtomatik tozalanadi
+            asyncio.create_task(auto_delete_msg(welcome_msg, 25))
 
 
-# ── Foydalanuvchi guruhdan chiqqanda ────────────────────────────────
-@router.message(F.left_chat_member)
-async def on_left_chat_member(message: Message) -> None:
+# ── Foydalanuvchi guruhdan chiqqanda (Chiqdi) va barcha xizmat xabarlari ──
+@router.message(
+    F.left_chat_member
+    | F.pinned_message
+    | F.new_chat_title
+    | F.new_chat_photo
+    | F.delete_chat_photo
+    | F.video_chat_started
+    | F.video_chat_ended
+    | F.video_chat_participants_invited
+    | F.video_chat_scheduled
+    | F.message_auto_delete_timer_changed
+)
+async def on_service_message(message: Message, bot: Bot) -> None:
+    """Guruhdagi chiqdi va barcha keraksiz xizmat xabarlarini darhol o'chirish."""
     try:
-        await message.delete()
-    except Exception:
-        pass
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception as e:
+        logger.debug(f"Xizmat xabarini o'chirishda: {e}")
 
 
 # ── Inline tugmalar callbacklari ────────────────────────────────────
@@ -248,7 +305,7 @@ async def cb_rules(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "btn_show_rating")
 async def cb_show_rating(call: CallbackQuery) -> None:
-    top_users = await db.get_top_active_users(call.message.chat.id, limit=5)
+    top_users = await db.get_top_users(call.message.chat.id, limit=5)
     if not top_users:
         await call.answer("Guruhda hali xabarlar statistikasi mavjud emas.", show_alert=True)
         return
@@ -262,10 +319,27 @@ async def cb_show_rating(call: CallbackQuery) -> None:
     await call.message.reply(text, parse_mode="Markdown")
 
 
-# ── Kanal yoki guruhga a'zo bo'lish uchun ariza (Join Request) yuborilganda ──
+@router.callback_query(F.data == "btn_my_invites")
+async def cb_my_invites(call: CallbackQuery) -> None:
+    if not call.message or not call.from_user:
+        return
+    group = await db.get_or_create_group(call.message.chat.id)
+    min_inv = group.get("min_invites", 0)
+    cnt = await db.get_user_invites(call.message.chat.id, call.from_user.id)
+    if min_inv > 0:
+        if cnt >= min_inv:
+            msg = f"✅ Siz guruh talabini to'liq bajargansiz ({cnt}/{min_inv} ta a'zo qo'shgansiz)!"
+        else:
+            msg = f"⚠️ Siz {cnt}/{min_inv} ta a'zo qo'shgansiz. Yana {min_inv - cnt} ta do'stingizni taklif qilishingiz kerak."
+    else:
+        msg = f"📊 Siz guruhga {cnt} ta a'zo taklif qilgansiz."
+    await call.answer(msg, show_alert=True)
+
+
+# ── Kanal yoki guruhga a'zo bo'lish uchun ariza (Join Request / Zayafka) ──
 @router.chat_join_request()
 async def on_chat_join_request(event: ChatJoinRequest, bot: Bot) -> None:
-    """Foydalanuvchi ariza yuborganida uni zudlik bilan bazaga kiritish."""
+    """Foydalanuvchi ariza (zayafka) yuborganida avtomatik qabul qilish va bazaga kiritish."""
     try:
         user_id = event.from_user.id
         await db.record_join_request(user_id, str(event.chat.id))
@@ -273,7 +347,30 @@ async def on_chat_join_request(event: ChatJoinRequest, bot: Bot) -> None:
             await db.record_join_request(user_id, f"@{event.chat.username}".lower())
             await db.record_join_request(user_id, event.chat.username.lower())
         logger.info(f"Join request qayd etildi: user {user_id} -> chat {event.chat.id}")
+
+        group = await db.get_or_create_group(event.chat.id, event.chat.title or "")
+        # Agar guruhda zayafkalarni avtomatik qabul qilish yoqilgan bo'lsa (standart: 1)
+        if group.get("auto_approve_joins", 1) == 1:
+            try:
+                await bot.approve_chat_join_request(chat_id=event.chat.id, user_id=event.from_user.id)
+                logger.info(f"✅ Zayafka avtomatik tasdiqlandi: {event.from_user.full_name} -> {event.chat.title}")
+                # Foydalanuvchiga shaxsiy xabar yuborish
+                try:
+                    chat_title = event.chat.title or "guruhimiz"
+                    await bot.send_message(
+                        chat_id=event.from_user.id,
+                        text=(
+                            f"🎉 **Arizangiz qabul qilindi!**\n\n"
+                            f"Sizning «**{chat_title}**» guruhiga qo'shilish arizangiz qabul qilindi. "
+                            f"Xush kelibsiz! 😊"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                except Exception:
+                    pass
+            except Exception as approve_err:
+                logger.warning(f"Zayafkani tasdiqlashda xatolik: {approve_err}")
     except Exception as e:
-        logger.warning(f"Join request qayd etishda xatolik: {e}")
+        logger.warning(f"Join request qayd etishda umumiy xatolik: {e}")
 
 
