@@ -131,6 +131,54 @@ async def on_bot_added_to_chat(event: ChatMemberUpdated, bot: Bot) -> None:
                 except Exception:
                     pass
 
+    elif event.chat.type == "channel":
+        new_status = event.new_chat_member.status
+        is_admin = 1 if new_status in ("administrator", "creator") else 0
+        chat_title = event.chat.title or "Kanal"
+        chat_username = event.chat.username or ""
+        invite_link = f"https://t.me/{chat_username}" if chat_username else ""
+
+        if not invite_link and is_admin:
+            try:
+                created = await bot.create_chat_invite_link(event.chat.id, name="Bot ulash havolasi")
+                invite_link = created.invite_link
+            except Exception:
+                try:
+                    invite_link = await bot.export_chat_invite_link(event.chat.id)
+                except Exception:
+                    pass
+
+        # Bot kanallar bazasiga saqlaymiz
+        await db.save_bot_channel(
+            channel_id=event.chat.id,
+            title=chat_title,
+            username=chat_username,
+            invite_link=invite_link,
+            is_admin=is_admin,
+            added_by=event.from_user.id if event.from_user else 0,
+        )
+
+        if is_admin and event.from_user:
+            try:
+                await bot.send_message(
+                    chat_id=event.from_user.id,
+                    text=(
+                        f"📢 **BOT KANALGA ADMINISTRATOR QILIB TAYINLANDI!** 🛡\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"📌 **Kanal:** «{chat_title}»\n"
+                        f"🆔 **Kanal ID:** `{event.chat.id}`\n"
+                        f"🔗 **Havola:** {invite_link or 'Maxfiy'}\n\n"
+                        f"💡 Ushbu kanalni guruhingizga **majburiy homiy kanal** qilib ulash uchun, "
+                        f"guruhingizga o'tib quyidagi buyruqni yuboring:\n\n"
+                        f"`/kanal {event.chat.id}`\n\n"
+                        f"✅ Bot endi ushbu maxfiy kanaldagi a'zolarni va arizalarni (zayafka) bemalol tekshira oladi!"
+                    ),
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                pass
+
 
 async def send_invite_notification(
     bot: Bot,

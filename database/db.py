@@ -130,9 +130,25 @@ class Database:
                     word TEXT,
                     PRIMARY KEY (chat_id, word)
                 );
+
+                CREATE TABLE IF NOT EXISTS bot_channels (
+                    channel_id INTEGER PRIMARY KEY,
+                    title TEXT DEFAULT '',
+                    username TEXT DEFAULT '',
+                    invite_link TEXT DEFAULT '',
+                    is_admin INTEGER DEFAULT 1,
+                    is_join_request INTEGER DEFAULT 0,
+                    added_by INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
                 """
             )
             # Mavjud bazalar uchun yangi ustunlarni tekshirib qo'shish
+            try:
+                await conn.execute("ALTER TABLE mandatory_channels ADD COLUMN is_join_request INTEGER DEFAULT 0")
+            except Exception:
+                pass
             try:
                 await conn.execute("ALTER TABLE groups ADD COLUMN min_invites INTEGER DEFAULT 0")
             except Exception:
@@ -1108,20 +1124,21 @@ class Database:
 
     # ── Majburiy kanallar (Mandatory Channels) ─────────────────────────
     async def add_mandatory_channel(
-        self, group_chat_id: int, channel_id: str, title: str = "", invite_link: str = ""
+        self, group_chat_id: int, channel_id: str, title: str = "", invite_link: str = "", is_join_request: int = 0
     ) -> bool:
         clean_ch = str(channel_id).strip()
         async with aiosqlite.connect(self.db_path) as conn:
             try:
                 await conn.execute(
                     """
-                    INSERT INTO mandatory_channels (group_chat_id, channel_id, title, invite_link)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO mandatory_channels (group_chat_id, channel_id, title, invite_link, is_join_request)
+                    VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(group_chat_id, channel_id) DO UPDATE SET
                         title = excluded.title,
-                        invite_link = excluded.invite_link
+                        invite_link = excluded.invite_link,
+                        is_join_request = excluded.is_join_request
                     """,
-                    (group_chat_id, clean_ch, title, invite_link),
+                    (group_chat_id, clean_ch, title, invite_link, is_join_request),
                 )
                 await conn.commit()
                 return True
@@ -1138,15 +1155,35 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
+    async def update_mandatory_channel_link(
+        self, group_chat_id: int, channel_id: str, invite_link: str
+    ) -> None:
+        clean_ch = str(channel_id).strip()
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE mandatory_channels SET invite_link = ? WHERE group_chat_id = ? AND channel_id = ?",
+                (invite_link, group_chat_id, clean_ch),
+            )
+            await conn.commit()
+
     async def remove_mandatory_channel(self, group_chat_id: int, channel_id: str) -> bool:
         clean_ch = str(channel_id).strip().lower()
+        num_clean = clean_ch.replace("-100", "").lstrip("-")
+        variants = [
+            clean_ch,
+            clean_ch.lstrip("@"),
+            f"@{clean_ch.lstrip('@')}",
+            num_clean,
+            f"-100{num_clean}",
+        ]
         async with aiosqlite.connect(self.db_path) as conn:
+            placeholders = ",".join("?" for _ in variants)
             cursor = await conn.execute(
-                """
+                f"""
                 DELETE FROM mandatory_channels 
-                WHERE group_chat_id = ? AND (LOWER(channel_id) = ? OR LOWER(channel_id) = ? OR channel_id = ?)
+                WHERE group_chat_id = ? AND (LOWER(channel_id) IN ({placeholders}) OR channel_id IN ({placeholders}))
                 """,
-                (group_chat_id, clean_ch, f"@{clean_ch.lstrip('@')}".lower(), clean_ch.lstrip("@")),
+                (group_chat_id, *variants, *variants),
             )
             await conn.commit()
             return cursor.rowcount > 0
@@ -1159,27 +1196,142 @@ class Database:
             )
             await conn.commit()
 
-    # ── Arizalar (Join Requests) ──────────────────────────────────────
-    async def record_join_request(self, user_id: int, channel_id: str) -> None:
-        clean_id = str(channel_id).strip().lower()
+    async def toggle_mandatory_channel_join_request(self, group_chat_id: int, channel_id: str) -> int:
+        """Kanalning Admin tasdiq (zayavka) holatini yoqish/o'chirish (0 <-> 1). Yangi holatni qaytaradi."""
+        clean_ch = str(channel_id).strip().lower()
+        num_clean = clean_ch.replace("-100", "").lstrip("-")
+        variants = [
+            clean_ch,
+            clean_ch.lstrip("@"),
+            f"@{clean_ch.lstrip('@')}",
+            num_clean,
+            f"-100{num_clean}",
+        ]
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            placeholders = ",".join("?" for _ in variants)
+            cursor = await conn.execute(
+                f"""
+                SELECT id, is_join_request FROM mandatory_channels
+                WHERE group_chat_id = ? AND (LOWER(channel_id) IN ({placeholders}) OR channel_id IN ({placeholders}))
+                LIMIT 1
+                """,
+                (group_chat_id, *variants, *variants),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return 0
+            cur_val = int(row["is_join_request"] or 0)
+            new_val = 0 if cur_val == 1 else 1
+            await conn.execute(
+                "UPDATE mandatory_channels SET is_join_request = ? WHERE id = ?",
+                (new_val, row["id"]),
+            )
+            await conn.commit()
+            return new_val
+
+    # ── Bot Administrator bo'lgan Kanallar (Bot Channels) ─────────────
+    async def save_bot_channel(
+        self,
+        channel_id: int,
+        title: str,
+        username: str = "",
+        invite_link: str = "",
+        is_admin: int = 1,
+        is_join_request: int = 0,
+        added_by: int = 0,
+    ) -> None:
+        """Bot admin bo'lgan kanallarni maxsus ro'yxatga kiritish yoki yangilash."""
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute(
                 """
-                INSERT INTO join_requests (user_id, channel_id)
-                VALUES (?, ?)
-                ON CONFLICT(user_id, channel_id) DO NOTHING
+                INSERT INTO bot_channels (channel_id, title, username, invite_link, is_admin, is_join_request, added_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(channel_id) DO UPDATE SET
+                    title = excluded.title,
+                    username = excluded.username,
+                    invite_link = CASE WHEN excluded.invite_link != '' THEN excluded.invite_link ELSE bot_channels.invite_link END,
+                    is_admin = excluded.is_admin,
+                    is_join_request = excluded.is_join_request,
+                    updated_at = CURRENT_TIMESTAMP
                 """,
-                (user_id, clean_id),
+                (channel_id, title, username, invite_link, is_admin, is_join_request, added_by),
             )
             await conn.commit()
 
-    async def has_join_request(self, user_id: int, channel_id: str) -> bool:
-        clean_id = str(channel_id).strip().lower()
-        variants = [clean_id, clean_id.lstrip("@"), f"@{clean_id.lstrip('@')}"]
+    async def get_bot_channels(self) -> list[dict[str, Any]]:
+        """Bot administrator bo'lgan barcha faol kanallar ro'yxati."""
         async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
             cursor = await conn.execute(
-                f"SELECT 1 FROM join_requests WHERE user_id = ? AND channel_id IN ({','.join(['?']*len(variants))}) LIMIT 1",
-                (user_id, *variants),
+                "SELECT * FROM bot_channels WHERE is_admin = 1 ORDER BY updated_at DESC"
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_bot_channel(self, channel_id: int) -> dict[str, Any] | None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT * FROM bot_channels WHERE channel_id = ?",
+                (channel_id,),
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def find_bot_channel_by_link(self, link: str) -> dict[str, Any] | None:
+        clean = link.strip().lower()
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT * FROM bot_channels WHERE LOWER(invite_link) = ? OR LOWER(invite_link) LIKE ?",
+                (clean, f"%{clean}%"),
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    # ── Arizalar (Join Requests / Zayavkalar) ─────────────────────────
+    async def record_join_request(self, user_id: int, channel_id: str | int) -> None:
+        """Kanal yoki guruhga a'zo bo'lish arizasini barcha ID variantlarida saqlash."""
+        clean_id = str(channel_id).strip().lower()
+        num_clean = clean_id.replace("-100", "").lstrip("-")
+        variants = {
+            clean_id,
+            clean_id.lstrip("@"),
+            f"@{clean_id.lstrip('@')}",
+            num_clean,
+            f"-100{num_clean}",
+        }
+        async with aiosqlite.connect(self.db_path) as conn:
+            for v in variants:
+                if v:
+                    await conn.execute(
+                        """
+                        INSERT INTO join_requests (user_id, channel_id)
+                        VALUES (?, ?)
+                        ON CONFLICT(user_id, channel_id) DO NOTHING
+                        """,
+                        (user_id, v),
+                    )
+            await conn.commit()
+
+    async def has_join_request(self, user_id: int, channel_id: str | int) -> bool:
+        """Foydalanuvchi ushbu kanalga ariza (zayafka) yuborganligini aniqlash."""
+        clean_id = str(channel_id).strip().lower()
+        num_clean = clean_id.replace("-100", "").lstrip("-")
+        variants = {
+            clean_id,
+            clean_id.lstrip("@"),
+            f"@{clean_id.lstrip('@')}",
+            num_clean,
+            f"-100{num_clean}",
+        }
+        var_list = [v for v in variants if v]
+        async with aiosqlite.connect(self.db_path) as conn:
+            placeholders = ",".join("?" for _ in var_list)
+            cursor = await conn.execute(
+                f"SELECT 1 FROM join_requests WHERE user_id = ? AND channel_id IN ({placeholders}) LIMIT 1",
+                (user_id, *var_list),
             )
             row = await cursor.fetchone()
             return bool(row)

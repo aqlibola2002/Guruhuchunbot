@@ -238,6 +238,44 @@ async def auto_delete_notification(msg: Message, delay: int = AUTO_DELETE_NOTIFI
         pass
 
 
+async def check_user_channel_subscription(
+    bot: Bot,
+    user_id: int,
+    channel_id_raw: str | int,
+) -> bool:
+    """
+    Foydalanuvchi kanalga a'zo bo'lganligini yoki ariza (zayavka) yuborganligini aniqlash.
+    Maxfiy kanallar (Private) va Admin tasdiq (Join Request) kanallarni 100% ishonchli tekshiradi.
+    """
+    ch_str = str(channel_id_raw).strip()
+
+    # 1. Admin tasdiq / Join request (Zayavka) tekshiruvi:
+    if await db.has_join_request(user_id, ch_str):
+        return True
+
+    # 2. Telegram API get_chat_member orqali tekshirish:
+    try:
+        if ch_str.startswith("-100") or (ch_str.startswith("-") and ch_str[1:].isdigit()) or ch_str.isdigit():
+            target_chat_id: int | str = int(ch_str)
+        else:
+            target_chat_id = ch_str if ch_str.startswith("@") else f"@{ch_str}"
+
+        member = await bot.get_chat_member(target_chat_id, user_id)
+        if member.status in ("member", "administrator", "creator", "restricted"):
+            return True
+        elif member.status in ("left", "kicked"):
+            # A'zo bo'lmasa, qayta zayafkasini tekshirib ko'ramiz
+            return await db.has_join_request(user_id, ch_str)
+    except Exception as e:
+        logger.debug(f"A'zolikni tekshirishda xatolik ({channel_id_raw}): {e}")
+        # Agar bot bu kanalda a'zolikni ko'ra olmasa: ariza yuborganligini tekshiramiz
+        if await db.has_join_request(user_id, ch_str):
+            return True
+        return False
+
+    return False
+
+
 CYRILLIC_TO_LATIN: dict[str, str] = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
     'ж': 'j', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
@@ -747,19 +785,9 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             not_joined = []
             for ch in mandatory_channels:
                 ch_id = ch["channel_id"]
-                # Ariza yuborgan bo'lsa — ruxsat beriladi
-                has_request = await db.has_join_request(message.from_user.id, ch_id)
-                if has_request:
-                    continue
-                # A'zoligini tekshirish
-                try:
-                    member = await bot.get_chat_member(ch_id, message.from_user.id)
-                    if member.status in ("member", "administrator", "creator", "restricted"):
-                        continue
+                is_sub = await check_user_channel_subscription(bot, message.from_user.id, ch_id)
+                if not is_sub:
                     not_joined.append(ch)
-                except Exception:
-                    # Kanal/guruhga kirish yo'q bo'lsa — ehtiyot chorasi sifatida o'tkazib yuboramiz
-                    continue
 
             if not_joined:
                 mention = safe_mention(message.from_user.full_name, message.from_user.id)
@@ -774,13 +802,22 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 for ch in not_joined:
                     link = ch.get("invite_link") or ""
                     title = ch.get("title") or ch["channel_id"]
+                    ch_id_str = str(ch["channel_id"]).strip()
                     if not link:
-                        # username bo'lsa havola yasash
-                        ch_id_str = str(ch["channel_id"]).strip()
                         if ch_id_str.startswith("@"):
                             link = f"https://t.me/{ch_id_str.lstrip('@')}"
+                        elif ch_id_str.startswith("-100") or (ch_id_str.startswith("-") and ch_id_str[1:].isdigit()):
+                            try:
+                                created_inv = await bot.create_chat_invite_link(int(ch_id_str), name="Guruh homiylik havolasi")
+                                link = created_inv.invite_link
+                                await db.update_mandatory_channel_link(message.chat.id, ch_id_str, link)
+                            except Exception:
+                                link = f"https://t.me/c/{ch_id_str.replace('-100', '')}"
+
                     if link:
-                        buttons.append([InlineKeyboardButton(text=f"➕ {title}", url=link)])
+                        is_rq = ch.get("is_join_request", 0) == 1 or ("+" in link or "joinchat" in link)
+                        btn_label = f"➕ {title} (Ariza yuborish)" if is_rq else f"➕ {title}"
+                        buttons.append([InlineKeyboardButton(text=btn_label, url=link)])
 
                 buttons.append([
                     InlineKeyboardButton(
@@ -801,12 +838,12 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"🚫 {mention}, guruhda yozish uchun avval quyidagi kanal(lar)ga a'zo bo'lishingiz lozim:\n\n"
                         f"{channel_list}\n\n"
-                        f"✅ Kanalga obuna bo'lgach (yoki ariza yuborgach), **«A'zo bo'ldim»** tugmasini bosing!"
+                        f"✅ Kanalga a'zo bo'lgach (yoki maxfiy/zayafka kanalga ariza yuborgach), **«A'zo bo'ldim»** tugmasini bosing!"
                     ),
                     parse_mode="Markdown",
                     reply_markup=join_kb,
                 )
-                asyncio.create_task(auto_delete_notification(notify, AUTO_DELETE_NOTIFICATION_DELAY))
+                asyncio.create_task(auto_delete_notification(notify, 60))
                 return
 
     # Botning o'zi ushbu guruhda admin ekanligi va xabar o'chira olishini tekshirish
@@ -1682,19 +1719,12 @@ async def cb_check_subscription(call: CallbackQuery, bot: Bot) -> None:
     not_joined = []
     for ch in channels:
         ch_id = ch["channel_id"]
-        has_request = await db.has_join_request(call.from_user.id, ch_id)
-        if has_request:
-            continue
-        try:
-            member = await bot.get_chat_member(ch_id, call.from_user.id)
-            if member.status in ("member", "administrator", "creator", "restricted"):
-                continue
+        is_sub = await check_user_channel_subscription(bot, call.from_user.id, ch_id)
+        if not is_sub:
             not_joined.append(ch)
-        except Exception:
-            continue
 
     if not not_joined:
-        await call.answer("🎉 Barcha kanallarga a'zo bo'ldingiz! Endi guruhda bemalol yoza olasiz ✅", show_alert=True)
+        await call.answer("🎉 Barcha kanallarga a'zoligingiz yoki arizangiz tasdiqlandi! Endi guruhda bemalol yoza olasiz ✅", show_alert=True)
         try:
             await call.message.delete()
         except Exception:
@@ -1702,7 +1732,7 @@ async def cb_check_subscription(call: CallbackQuery, bot: Bot) -> None:
     else:
         left_count = len(not_joined)
         await call.answer(
-            f"❌ Hali {left_count} ta kanalga a'zo emassiz! Iltimos, barcha kanallarga a'zo bo'ling.",
+            f"❌ Hali {left_count} ta kanalga a'zo bo'lmadingiz yoki ariza yubormadingiz! Iltimos, barcha kanallarga kiring.",
             show_alert=True,
         )
 

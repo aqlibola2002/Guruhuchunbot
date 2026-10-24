@@ -373,6 +373,139 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
 
 
 # ── /kanal [@ yoki id orqali majburiy kanal va guruhlar] ───────────
+async def build_mandatory_channels_view(
+    bot: Bot, group_chat_id: int, chat_title: str
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Majburiy kanallar ro'yxati matni va interaktiv boshqaruv klaviaturasini shakllantirish."""
+    channels = await db.get_mandatory_channels(group_chat_id)
+    bot_channels = await db.get_bot_channels()
+
+    # Guruhga hali ulanmagan bot kanallarini aniqlash
+    existing_ids = set()
+    for c in channels:
+        ch_str = str(c.get("channel_id", "")).strip().lower()
+        existing_ids.add(ch_str)
+        existing_ids.add(ch_str.lstrip("@"))
+        num_clean = ch_str.replace("-100", "").lstrip("-")
+        existing_ids.add(num_clean)
+        existing_ids.add(f"-100{num_clean}")
+
+    available_bot_channels = []
+    for bc in bot_channels:
+        bc_id_str = str(bc.get("channel_id", "")).strip().lower()
+        num_clean = bc_id_str.replace("-100", "").lstrip("-")
+        if (
+            bc_id_str not in existing_ids
+            and num_clean not in existing_ids
+            and f"-100{num_clean}" not in existing_ids
+        ):
+            available_bot_channels.append(bc)
+
+    text = (
+        f"📢 **HOMIY KANALLAR BOSHQARUVI** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📍 Guruh: «**{chat_title}**»\n\n"
+    )
+
+    kb_rows: list[list[InlineKeyboardButton]] = []
+
+    if channels:
+        text += f"📋 **Ulangan majburiy kanallar ({len(channels)} ta):**\n\n"
+        for idx, ch in enumerate(channels, 1):
+            title = ch.get("title") or ch.get("channel_id")
+            chid = str(ch.get("channel_id"))
+            link = ch.get("invite_link") or (
+                f"https://t.me/{chid.lstrip('@')}" if chid.startswith("@") else ""
+            )
+            is_rq = int(ch.get("is_join_request") or 0) == 1
+
+            is_private = (
+                chid.startswith("-100")
+                or (chid.startswith("-") and chid[1:].isdigit())
+                or chid.isdigit()
+                or ("+" in link)
+                or ("joinchat" in link)
+            )
+            type_label = "🔒 Maxfiy kanal" if is_private else "📢 Ommaviy kanal"
+            mode_label = "🛡 Admin tasdiq (Zayavka)" if is_rq else "👥 Oddiy a'zolik"
+
+            if link:
+                text += (
+                    f"{idx}. **[{title}]({link})** (`{chid}`)\n"
+                    f"   └ 🏷 *Turi:* {type_label} | *Rejim:* `{mode_label}`\n"
+                )
+            else:
+                text += (
+                    f"{idx}. **{title}** (`{chid}`)\n"
+                    f"   └ 🏷 *Turi:* {type_label} | *Rejim:* `{mode_label}`\n"
+                )
+
+            # Har bir kanal uchun alohida boshqaruv tugmalari
+            tgl_btn_text = "🛡 Tasdiq: ON" if is_rq else "👥 Oddiy a'zolik"
+            kb_rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"🔄 {str(title)[:12]} ({tgl_btn_text})",
+                        callback_data=f"mchan_tgl:{chid}",
+                    ),
+                    InlineKeyboardButton(
+                        text="🗑 O'chirish",
+                        callback_data=f"mchan_del:{chid}",
+                    ),
+                ]
+            )
+        text += "\n"
+    else:
+        text += (
+            f"ℹ️ *Guruhda hozircha majburiy homiy kanallar ulanmagan.*\n\n"
+        )
+
+    # Agar bot administrator bo'lgan boshqa kanallar mavjud bo'lsa (bir bosishda ulash)
+    if available_bot_channels:
+        text += (
+            f"⚡️ **Mavjud kanallar (Bot admin bo'lgan):**\n"
+            f"*Quyidagi tugmalar orqali bir bosishda guruhingizga ulashingiz mumkin:*\n"
+        )
+        for bc in available_bot_channels[:5]:
+            b_title = bc.get("title") or str(bc.get("channel_id"))
+            b_type = "🔒 Zayavka/Maxfiy" if bc.get("is_join_request") == 1 else "📢 Kanal"
+            text += f"  • **{b_title}** (`{bc.get('channel_id')}`) — {b_type}\n"
+            kb_rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"➕ {str(b_title)[:22]} ulash",
+                        callback_data=f"mchan_add:{bc.get('channel_id')}",
+                    )
+                ]
+            )
+        text += "\n"
+
+    # Pastki umumiy amallar tugmalari
+    action_btns: list[InlineKeyboardButton] = []
+    if channels:
+        action_btns.append(
+            InlineKeyboardButton(text="🗑 Barchasini tozalash", callback_data="mchan_clear")
+        )
+    action_btns.append(
+        InlineKeyboardButton(text="🔄 Yangilash", callback_data="mchan_refresh")
+    )
+    if action_btns:
+        kb_rows.append(action_btns)
+
+    text += (
+        f"💡 **Yangi kanal ulash usullari:**\n"
+        f"1️⃣ **Post uzatish (Eng oson va xatosiz):**\n"
+        f"   Kanalning istalgan postini guruhga uzating (forward qiling) va unga reply tarzida `/kanal` deb yuboring!\n"
+        f"2️⃣ **Maxfiy yoki Admin Tasdiq kanal ulash:**\n"
+        f"   `/kanal -1001234567890 https://t.me/+AbCdEf tasdiq`\n"
+        f"3️⃣ **Ommaviy kanal ulash:**\n"
+        f"   `/kanal @kanal_username`\n\n"
+        f"ℹ️ *Kanalga botni Administrator qilib qo'shish shart!*"
+    )
+
+    return text, InlineKeyboardMarkup(inline_keyboard=kb_rows)
+
+
 @router.message(Command("kanal", "kanallar", "channel", "channels", ignore_case=True))
 async def cmd_kanal(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
@@ -386,86 +519,100 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
 
     parts = (message.text or "").split()
 
-    # 1. /kanal (argumentlarsiz) — hozirgi majburiy kanallar ro'yxati
-    if len(parts) == 1:
-        channels = await db.get_mandatory_channels(message.chat.id)
-        if not channels:
-            await message.reply(
-                f"📢 **HOMIY KANALLAR BOSHQARUVI** 📢\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"Guruhda hozircha majburiy homiy kanallar belgilanmagan.\n\n"
-                f"💡 **Yangi kanal qo'shish usullari:**\n"
-                f"├ `/kanal @kanal_username`\n"
-                f"├ `/kanal -1001234567890` (Kanal yoki Guruh ID si)\n"
-                f"├ `/kanal https://t.me/kanal_nomi`\n"
-                f"└ Maxsus havola bilan: `/kanal -1001234567890 https://t.me/+AbCdEf`\n\n"
-                f"ℹ️ *Kanal qo'shilgach, a'zolar unga a'zo bo'lmaguncha (yoki ariza yubormaguncha) guruhga yuborgan xabarlari avtomatik o'chiriladi.*",
-                parse_mode="Markdown",
-            )
-            return
+    # ── 1. Forward qilingan postga reply orqali kanal qo'shish (Eng oson usul) ──
+    reply_msg = message.reply_to_message
+    if reply_msg and getattr(reply_msg, "forward_from_chat", None):
+        f_chat = reply_msg.forward_from_chat
+        target_chat_id = f_chat.id
+        title = f_chat.title or str(target_chat_id)
 
-        text = (
-            f"📢 **MAJBURIY HOMIY KANALLAR RO'YXATI** 📢\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📍 Guruh: «{message.chat.title}»\n\n"
-        )
-        for idx, ch in enumerate(channels, 1):
-            title = ch.get("title") or ch.get("channel_id")
-            chid = ch.get("channel_id")
-            link = ch.get("invite_link") or (f"https://t.me/{chid.lstrip('@')}" if str(chid).startswith("@") else "")
-            prefix = "└" if idx == len(channels) else "├"
-            if link:
-                text += f"{prefix} {idx}. **[{title}]({link})** (`{chid}`)\n"
+        # Havola yoki rejim kiritilganligini aniqlash
+        custom_link = ""
+        is_join_request = 0
+        for p in parts[1:]:
+            if p.startswith("http"):
+                custom_link = p
+            if p.lower() in ("tasdiq", "zayavka", "request", "admin"):
+                is_join_request = 1
+
+        if "+" in custom_link or "joinchat" in custom_link:
+            is_join_request = 1
+
+        invite_link = custom_link
+        if not invite_link:
+            if f_chat.username:
+                invite_link = f"https://t.me/{f_chat.username}"
             else:
-                text += f"{prefix} {idx}. **{title}** (`{chid}`)\n"
+                try:
+                    if is_join_request:
+                        inv = await bot.create_chat_invite_link(
+                            target_chat_id, name="Homiy tasdiq havolasi", creates_join_request=True
+                        )
+                    else:
+                        inv = await bot.create_chat_invite_link(
+                            target_chat_id, name="Homiy havolasi"
+                        )
+                    invite_link = inv.invite_link
+                except Exception:
+                    invite_link = f"https://t.me/c/{str(target_chat_id).replace('-100', '')}"
 
-        text += (
-            f"\n📊 Jami: **{len(channels)}** ta homiy kanal\n\n"
-            f"➕ **Kanal qo'shish:** `/kanal @kanal_nomi`\n"
-            f"➖ **Kanalni o'chirish:** `/kanal ochir @kanal_nomi`\n"
-            f"🗑 **Barchasini tozalash:** `/kanal tozalash`"
+        # Bot administratorligini tekshirish
+        bot_is_admin = False
+        try:
+            me = await bot.get_me()
+            cm = await bot.get_chat_member(target_chat_id, me.id)
+            bot_is_admin = cm.status in ("creator", "administrator")
+        except Exception:
+            bot_is_admin = False
+
+        # Bazaga qo'shish
+        await db.add_mandatory_channel(
+            message.chat.id,
+            str(target_chat_id),
+            title=title,
+            invite_link=invite_link,
+            is_join_request=is_join_request,
         )
-        await message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
+        # Bot kanallariga kiritish
+        await db.save_bot_channel(
+            channel_id=target_chat_id,
+            title=title,
+            username=f_chat.username or "",
+            invite_link=invite_link,
+            is_admin=1 if bot_is_admin else 0,
+            is_join_request=is_join_request,
+            added_by=message.from_user.id if message.from_user else 0,
+        )
+
+        admin_status_str = (
+            "✅ Administrator (A'zolik va arizalar 100% tekshiriladi)"
+            if bot_is_admin
+            else "⚠️ Administrator emas (Botni kanalga admin qiling!)"
+        )
+        mode_str = "🛡 Admin tasdiq (Zayavka)" if is_join_request else "👥 Oddiy to'liq a'zolik"
+
+        await message.reply(
+            f"📢 **HOMIY KANAL ULANDI!** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"├ 📢 **Kanal:** [{title}]({invite_link})\n"
+            f"├ 🆔 **ID:** `{target_chat_id}`\n"
+            f"├ ⚙️ **Rejim:** {mode_str}\n"
+            f"└ 🤖 **Bot maqomi:** {admin_status_str}\n\n"
+            f"📌 *Kanal guruhning majburiy homiylik ro'yxatiga muvaffaqiyatli qo'shildi!*",
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+        return
+
+    # ── 2. /kanal (argumentlarsiz yoki list) ──
+    if len(parts) == 1 or (len(parts) > 1 and parts[1].strip().lower() in ("list", "royxat", "ro'yxat")):
+        text, kb = await build_mandatory_channels_view(bot, message.chat.id, message.chat.title or "Guruh")
+        await message.reply(text, reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=True)
         return
 
     sub_cmd = parts[1].strip().lower()
 
-    # 1.1 /kanal list yoki /kanal royxat
-    if sub_cmd in ("list", "royxat", "ro'yxat"):
-        channels = await db.get_mandatory_channels(message.chat.id)
-        if not channels:
-            await message.reply(
-                f"📢 **HOMIY KANALLAR RO'YXATI** 📢\n\n"
-                f"Guruhda hozircha majburiy homiy kanallar belgilanmagan.\n\n"
-                f"➕ Qo'shish: `/kanal @kanal_nomi`",
-                parse_mode="Markdown",
-            )
-            return
-
-        text = (
-            f"📢 **MAJBURIY HOMIY KANALLAR RO'YXATI** 📢\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📍 Guruh: «{message.chat.title}»\n\n"
-        )
-        for idx, ch in enumerate(channels, 1):
-            title = ch.get("title") or ch.get("channel_id")
-            chid = ch.get("channel_id")
-            link = ch.get("invite_link") or (f"https://t.me/{chid.lstrip('@')}" if str(chid).startswith("@") else "")
-            prefix = "└" if idx == len(channels) else "├"
-            if link:
-                text += f"{prefix} {idx}. **[{title}]({link})** (`{chid}`)\n"
-            else:
-                text += f"{prefix} {idx}. **{title}** (`{chid}`)\n"
-
-        text += (
-            f"\n📊 Jami: **{len(channels)}** ta homiy kanal\n\n"
-            f"➕ **Kanal qo'shish:** `/kanal @kanal_nomi`\n"
-            f"➖ **Kanalni o'chirish:** `/kanal ochir @kanal_nomi`"
-        )
-        await message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
-        return
-
-    # 2. Barchasini tozalash: /kanal tozalash
+    # ── 3. Barchasini tozalash: /kanal tozalash ──
     if sub_cmd in ("tozalash", "clear", "hammasini_ochir"):
         await db.clear_mandatory_channels(message.chat.id)
         await message.reply(
@@ -478,10 +625,13 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
         )
         return
 
-    # 3. Muayyan kanalni o'chirish: /kanal ochir @kanalim
+    # ── 4. Muayyan kanalni o'chirish: /kanal ochir @kanalim ──
     if sub_cmd in ("ochir", "del", "delete", "remove", "ochirish"):
         if len(parts) < 3:
-            await message.reply("⚠️ Qaysi kanalni o'chirmoqchisiz?\nMasalan: `/kanal ochir @kanalim`", parse_mode="Markdown")
+            await message.reply(
+                "⚠️ Qaysi kanalni o'chirmoqchisiz?\nMasalan: `/kanal ochir @kanalim` yoki `/kanal ochir -100...`",
+                parse_mode="Markdown",
+            )
             return
         target_ch = parts[2].strip()
         removed = await db.remove_mandatory_channel(message.chat.id, target_ch)
@@ -491,23 +641,89 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
             await message.reply(f"❌ **{target_ch}** ro'yxatda topilmadi.", parse_mode="Markdown")
         return
 
-    # 4. Yangi kanal qo'shish: /kanal @kanalim yoki /kanal -100...
+    # ── 5. Rejimni almashtirish: /kanal tasdiq @kanalim yoki /kanal zayavka -100... ──
+    if sub_cmd in ("tasdiq", "zayavka", "request"):
+        if len(parts) < 3:
+            await message.reply(
+                "⚠️ Qaysi kanal rejimini o'zgartirmoqchisiz?\nMasalan: `/kanal tasdiq @kanalim` yoki `/kanal tasdiq -100...`",
+                parse_mode="Markdown",
+            )
+            return
+        target_ch = parts[2].strip()
+        new_val = await db.toggle_mandatory_channel_join_request(message.chat.id, target_ch)
+        status_str = "🛡 Admin tasdiq (Zayavka) rejimi YOQILDI" if new_val == 1 else "👥 Oddiy a'zolik rejimi YOQILDI"
+        await message.reply(f"✅ **{target_ch}** uchun {status_str}!", parse_mode="Markdown")
+        return
+
+    # ── 6. To'g'ridan-to'g'ri maxfiy havola kiritilgan bo'lsa (https://t.me/+... yoki joinchat) ──
     raw_input = parts[1].strip()
-    custom_invite_link = parts[2].strip() if len(parts) > 2 and parts[2].startswith("http") else ""
+    if raw_input.startswith("https://t.me/+") or "joinchat" in raw_input:
+        matched = await db.find_bot_channel_by_link(raw_input)
+        if matched:
+            target_chat_id = matched["channel_id"]
+            title = matched.get("title") or str(target_chat_id)
+            is_join_request = 1
+
+            await db.add_mandatory_channel(
+                message.chat.id,
+                str(target_chat_id),
+                title=title,
+                invite_link=raw_input,
+                is_join_request=is_join_request,
+            )
+            await message.reply(
+                f"📢 **MAXFIY HOMIY KANAL ULANDI!** ✅\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"├ 📢 **Kanal:** [{title}]({raw_input})\n"
+                f"├ 🆔 **ID:** `{target_chat_id}`\n"
+                f"└ ⚙️ **Rejim:** 🛡 Admin tasdiq (Zayavka)\n\n"
+                f"✅ A'zolik va arizalar avtomatik 24/7 tekshiriladi!",
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+            )
+            return
+        else:
+            await message.reply(
+                f"⚠️ **MAXFIY KANAL HAVOLASI HAQIDA MA'LUMOT** 🔒\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Telegram xavfsizlik cheklovlari tufayli botlar taklif havolasi (`https://t.me/+...`) orqali kanalning sonli ID sini to'g'ridan-to'g'ri bila olmaydi.\n\n"
+                f"💡 **Kanalni ulashning 3 ta qulay usuli:**\n\n"
+                f"1️⃣ **Post uzatish (Eng oson!):**\n"
+                f"   Kanalning istalgan postini guruhga uzating (forward qiling) va unga reply qilib `/kanal` deb yozing!\n\n"
+                f"2️⃣ **Botni kanalga admin qilish:**\n"
+                f"   Botni kanalga admin qiling, so'ng guruhda `/kanal` deb yozsangiz, bot uni avtomatik aniqlab, **«Bir bosishda ulash»** tugmasini chiqaradi!\n\n"
+                f"3️⃣ **Kanal ID si bilan yozish:**\n"
+                f"   `/kanal -1001234567890 {raw_input}`",
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+            )
+            return
+
+    # ── 7. Yangi kanal qo'shish: /kanal @kanalim yoki /kanal -100... [havola] [tasdiq] ──
+    custom_invite_link = ""
+    is_join_request = 0
+
+    for p in parts[2:]:
+        if p.startswith("http"):
+            custom_invite_link = p
+        if p.lower() in ("tasdiq", "zayavka", "request", "admin"):
+            is_join_request = 1
+
+    if "+" in custom_invite_link or "joinchat" in custom_invite_link:
+        is_join_request = 1
 
     chat_target: int | str = raw_input
-    # Link kiritilgan bo'lsa username ajratib olish
-    if "t.me/" in raw_input and not raw_input.startswith("https://t.me/+"):
+    if "t.me/" in raw_input and not (raw_input.startswith("https://t.me/+") or "joinchat" in raw_input):
         username = raw_input.split("t.me/")[1].split("/")[0].split("?")[0]
         chat_target = f"@{username}"
-    elif raw_input.startswith("-100") or (raw_input.startswith("-") and raw_input[1:].isdigit()):
+    elif raw_input.startswith("-100") or (raw_input.startswith("-") and raw_input[1:].isdigit()) or raw_input.isdigit():
         chat_target = int(raw_input)
 
     status_msg = await message.reply("⏳ Kanal ma'lumotlari tekshirilmoqda...")
 
     try:
         chat_obj = await bot.get_chat(chat_target)
-        channel_id = f"@{chat_obj.username}" if chat_obj.username else str(chat_obj.id)
+        channel_id = str(chat_obj.id)
         title = chat_obj.title or channel_id
 
         invite_link = custom_invite_link
@@ -518,7 +734,15 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
                 invite_link = chat_obj.invite_link
             else:
                 try:
-                    invite_link = await bot.export_chat_invite_link(chat_obj.id)
+                    if is_join_request:
+                        created = await bot.create_chat_invite_link(
+                            chat_obj.id, name="Homiy tasdiq havolasi", creates_join_request=True
+                        )
+                    else:
+                        created = await bot.create_chat_invite_link(
+                            chat_obj.id, name="Homiy havolasi"
+                        )
+                    invite_link = created.invite_link
                 except Exception:
                     invite_link = f"https://t.me/c/{str(chat_obj.id).replace('-100', '')}"
 
@@ -532,7 +756,23 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
             bot_is_admin = False
 
         # Bazaga saqlash
-        await db.add_mandatory_channel(message.chat.id, channel_id, title=title, invite_link=invite_link)
+        await db.add_mandatory_channel(
+            message.chat.id,
+            channel_id,
+            title=title,
+            invite_link=invite_link,
+            is_join_request=is_join_request,
+        )
+        # Bot kanallar ro'yxatiga ham saqlash
+        await db.save_bot_channel(
+            channel_id=chat_obj.id,
+            title=title,
+            username=chat_obj.username or "",
+            invite_link=invite_link,
+            is_admin=1 if bot_is_admin else 0,
+            is_join_request=is_join_request,
+            added_by=message.from_user.id if message.from_user else 0,
+        )
 
         admin_status_text = (
             "✅ **Bot kanalda administrator ekanligi tasdiqlandi!** (A'zolik va arizalar 24/7 avtomatik tekshiriladi)"
@@ -540,11 +780,13 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
             else "⚠️ **DIQQAT (Muhim!):** Bot ushbu kanalda administrator emas!\n"
                  "Bot a'zolikni va arizalarni tekshira olishi uchun botni ushbu kanalga **Administrator (Admin)** qilib tayinlashingiz shart!"
         )
+        mode_str = "🛡 Admin tasdiq (Zayavka)" if is_join_request else "👥 Oddiy to'liq a'zolik"
 
         await status_msg.edit_text(
-            f"📢 **HOMIY KANAL QO'SHILDI** ✅\n"
+            f"📢 **HOMIY KANAL ULANDI** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"├ 📢 **Kanal:** [{title}]({invite_link}) (`{channel_id}`)\n"
+            f"├ ⚙️ **Rejim:** {mode_str}\n"
             f"└ 🤖 **Bot maqomi:** {'✅ Administrator' if bot_is_admin else '⚠️ Administrator emas'}\n\n"
             f"{admin_status_text}\n\n"
             f"📌 Endi guruh a'zolari ushbu kanalga a'zo bo'lmaguncha (yoki ariza yubormaguncha) guruhda yoza olishmaydi.",
@@ -552,11 +794,19 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
             disable_web_page_preview=True,
         )
     except Exception as e:
-        channel_id = str(raw_input)
+        channel_id = str(chat_target)
         title = channel_id
-        invite_link = custom_invite_link or (f"https://t.me/{channel_id.lstrip('@')}" if channel_id.startswith("@") else "")
+        invite_link = custom_invite_link or (
+            f"https://t.me/{channel_id.lstrip('@')}" if channel_id.startswith("@") else ""
+        )
 
-        await db.add_mandatory_channel(message.chat.id, channel_id, title=title, invite_link=invite_link)
+        await db.add_mandatory_channel(
+            message.chat.id,
+            channel_id,
+            title=title,
+            invite_link=invite_link,
+            is_join_request=is_join_request,
+        )
 
         await status_msg.edit_text(
             f"⚠️ **KANAL RO'YXATGA QO'SHILDI** ⚠️\n"
@@ -565,6 +815,150 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
             f"❗ **Eslatma:** Bot kanal a'zolarini va yuborilgan arizalarni tekshira olishi uchun botni ushbu kanalga **Administrator** qilib qo'shishingiz shart!",
             parse_mode="Markdown",
         )
+
+
+# ── Homiy kanal boshqaruvi callback handlerlari ─────────────────────
+@router.callback_query(F.data.startswith("mchan_add:"))
+async def cb_mchan_add(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu amal faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    channel_id_raw = call.data.split(":", 1)[1]
+    try:
+        chid = int(channel_id_raw)
+    except ValueError:
+        await call.answer("❌ Noto'g'ri kanal ID!", show_alert=True)
+        return
+
+    bch = await db.get_bot_channel(chid)
+    title = bch.get("title") if bch else str(chid)
+    invite_link = bch.get("invite_link") if bch else ""
+    is_join_request = bch.get("is_join_request") if bch else 0
+
+    if not invite_link:
+        try:
+            inv = await bot.create_chat_invite_link(
+                chid, name="Guruh homiy havolasi", creates_join_request=bool(is_join_request)
+            )
+            invite_link = inv.invite_link
+        except Exception:
+            pass
+
+    await db.add_mandatory_channel(
+        call.message.chat.id,
+        str(chid),
+        title=title,
+        invite_link=invite_link,
+        is_join_request=is_join_request,
+    )
+    await call.answer(f"✅ «{title}» guruhingizga homiy kanal qilib ulandi!", show_alert=True)
+    text, kb = await build_mandatory_channels_view(
+        bot, call.message.chat.id, call.message.chat.title or "Guruh"
+    )
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("mchan_del:"))
+async def cb_mchan_del(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu amal faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    channel_id_raw = call.data.split(":", 1)[1]
+    removed = await db.remove_mandatory_channel(call.message.chat.id, channel_id_raw)
+    if removed:
+        await call.answer("🗑 Homiy kanal ro'yxatdan o'chirildi!", show_alert=True)
+    else:
+        await call.answer("⚠️ Kanal topilmadi yoki avvalroq o'chirilgan.", show_alert=True)
+
+    text, kb = await build_mandatory_channels_view(
+        bot, call.message.chat.id, call.message.chat.title or "Guruh"
+    )
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("mchan_tgl:"))
+async def cb_mchan_tgl(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu amal faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    channel_id_raw = call.data.split(":", 1)[1]
+    new_val = await db.toggle_mandatory_channel_join_request(call.message.chat.id, channel_id_raw)
+
+    # Agar zayavka rejimi yoqilgan bo'lsa va bot admin bo'lsa, zayavka havolasini yaratish
+    if new_val == 1:
+        try:
+            num_clean = channel_id_raw.replace("-100", "").lstrip("-")
+            chid_int = int(f"-100{num_clean}")
+            inv = await bot.create_chat_invite_link(
+                chid_int, name="Homiy tasdiq havolasi", creates_join_request=True
+            )
+            await db.update_mandatory_channel_link(call.message.chat.id, channel_id_raw, inv.invite_link)
+        except Exception:
+            pass
+
+    status_str = "🛡 Admin tasdiq (Zayavka) rejimi yoqildi" if new_val == 1 else "👥 Oddiy a'zolik rejimi yoqildi"
+    await call.answer(f"🔄 {status_str}!", show_alert=True)
+
+    text, kb = await build_mandatory_channels_view(
+        bot, call.message.chat.id, call.message.chat.title or "Guruh"
+    )
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "mchan_refresh")
+async def cb_mchan_refresh(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu amal faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    text, kb = await build_mandatory_channels_view(
+        bot, call.message.chat.id, call.message.chat.title or "Guruh"
+    )
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=True)
+        await call.answer("🔄 Yangilandi!")
+    except Exception:
+        await call.answer("Ma'lumotlar yangilandi.")
+
+
+@router.callback_query(F.data == "mchan_clear")
+async def cb_mchan_clear(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu amal faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    await db.clear_mandatory_channels(call.message.chat.id)
+    await call.answer("🗑 Barcha homiy kanallar tozalandi!", show_alert=True)
+    text, kb = await build_mandatory_channels_view(
+        bot, call.message.chat.id, call.message.chat.title or "Guruh"
+    )
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception:
+        pass
+
 
 
 
