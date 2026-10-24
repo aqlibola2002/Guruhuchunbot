@@ -34,9 +34,9 @@ else:
 # Guruh sozlamalari (Standart)
 MAX_WARNS: int = int(os.getenv("MAX_WARNS", "3"))
 DEFAULT_MUTE_SECONDS: int = int(os.getenv("DEFAULT_MUTE_SECONDS", "3600"))  # 1 soat
-AUTO_DELETE_NOTIFICATION_DELAY: int = 15  # Bot xabarlari 15 soniyada avtomatik o'chiriladi
-WELCOME_NOTIFICATION_DELAY: int = 25  # Xush kelibsiz xabari 25 soniyada tozalanadi
-APK_WARNING_NOTIFICATION_DELAY: int = 30  # APK virus ogohlantirishi 30 soniyada tozalanadi
+AUTO_DELETE_NOTIFICATION_DELAY: int = 60  # Bot xabarlari 60 soniyada (1 daqiqa) avtomatik o'chiriladi
+WELCOME_NOTIFICATION_DELAY: int = 60  # Xush kelibsiz xabari 60 soniyada (1 daqiqa) tozalanadi
+APK_WARNING_NOTIFICATION_DELAY: int = 60  # APK virus ogohlantirishi 60 soniyada (1 daqiqa) tozalanadi
 
 # Taqiqlangan spam so'zlar ro'yxati
 SPAM_KEYWORDS: list[str] = [

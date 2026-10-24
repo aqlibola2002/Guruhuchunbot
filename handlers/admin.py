@@ -823,7 +823,7 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
             except Exception:
                 pass
 
-        asyncio.create_task(auto_delete_message(prog_msg, 6))
+        asyncio.create_task(auto_delete_message(prog_msg, 60))
         return
 
     # 2. AGAR PARAMETRSIZ YOZILSA — STANDART OXIRGI 30 TA XABARNI TOZALASH
@@ -949,8 +949,8 @@ async def run_animated_cleanup(bot: Bot, chat_id: int, current_msg_id: int, coun
         except Exception:
             pass
 
-    # Xabar 6 soniyadan so'ng avtomatik o'chiriladi
-    asyncio.create_task(auto_delete_message(msg, 6))
+    # Xabar 60 soniyadan so'ng avtomatik o'chiriladi
+    asyncio.create_task(auto_delete_message(msg, 60))
 
 
 # ── Callbacklar: Avto-tozalash ON / OFF va vaqt tanlash ─────────────
@@ -1308,7 +1308,7 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
 
 
 
-async def auto_delete_msg(msg: Message, delay: int = 5) -> None:
+async def auto_delete_msg(msg: Message, delay: int = AUTO_DELETE_NOTIFICATION_DELAY) -> None:
     await asyncio.sleep(delay)
     try:
         await msg.delete()
@@ -1349,7 +1349,7 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
                 reply_to_message_id=target_msg.message_id,
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_msg(notify, 5))
+            asyncio.create_task(auto_delete_msg(notify, AUTO_DELETE_NOTIFICATION_DELAY))
             return
         except Exception as e:
             await message.reply(
@@ -1391,7 +1391,7 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
                 reply_to_message_id=message.message_id,
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_msg(notify, 5))
+            asyncio.create_task(auto_delete_msg(notify, AUTO_DELETE_NOTIFICATION_DELAY))
             return
         except Exception as e:
             await message.reply(f"❌ Faylni qadashda xatolik: {e}")

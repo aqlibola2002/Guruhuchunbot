@@ -24,7 +24,7 @@ from config import (
 )
 from database.db import db
 from filters.admin_filter import is_admin, can_bot_delete
-from services.ui_utils import make_progress_bar
+from services.ui_utils import make_progress_bar, set_user_invite_warn_msg, pop_user_invite_warn_msgs
 
 router = Router(name="moderation")
 logger = logging.getLogger(__name__)
@@ -478,7 +478,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     parse_mode="Markdown",
                     reply_markup=join_kb,
                 )
-                asyncio.create_task(auto_delete_notification(notify, 25))
+                asyncio.create_task(auto_delete_notification(notify, AUTO_DELETE_NOTIFICATION_DELAY))
                 return
 
     # Botning o'zi ushbu guruhda admin ekanligi va xabar o'chira olishini tekshirish
@@ -526,7 +526,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     ),
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_notification(notify, 15))
+                asyncio.create_task(auto_delete_notification(notify, AUTO_DELETE_NOTIFICATION_DELAY))
                 return
 
     # 🤖 2.2 Anti-Inline Bot (Yashirin botlar orqali reklama yuborish taqiqi)
@@ -633,6 +633,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 last_warn = INVITE_WARN_CACHE.get(warn_key, 0.0)
                 if now_t - last_warn > 4.0:
                     INVITE_WARN_CACHE[warn_key] = now_t
+
+                    # Avvalgi ogohlantirishlarni chat toza bo'lishi uchun o'chirib tashlaymiz
+                    old_db_warns = await db.pop_invite_warnings(message.chat.id, message.from_user.id)
+                    old_mem_warns = pop_user_invite_warn_msgs(message.chat.id, message.from_user.id)
+                    for old_w_id in set(old_db_warns + old_mem_warns):
+                        try:
+                            await bot.delete_message(chat_id=message.chat.id, message_id=old_w_id)
+                        except Exception:
+                            pass
+
                     notify = await bot.send_message(
                         chat_id=message.chat.id,
                         text=(
@@ -647,7 +657,9 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         ),
                         parse_mode="Markdown",
                     )
-                    asyncio.create_task(auto_delete_notification(notify, 15))
+                    await db.add_invite_warning(message.chat.id, message.from_user.id, notify.message_id)
+                    set_user_invite_warn_msg(message.chat.id, message.from_user.id, notify.message_id)
+                    asyncio.create_task(auto_delete_notification(notify, 60))
                 return
             else:
                 # Bot admin bo'lmasa: xabarni o'chira olmagani sababli ogohlantiradi
@@ -662,6 +674,15 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         ]
                     ]
                 )
+
+                old_db_warns = await db.pop_invite_warnings(message.chat.id, message.from_user.id)
+                old_mem_warns = pop_user_invite_warn_msgs(message.chat.id, message.from_user.id)
+                for old_w_id in set(old_db_warns + old_mem_warns):
+                    try:
+                        await bot.delete_message(chat_id=message.chat.id, message_id=old_w_id)
+                    except Exception:
+                        pass
+
                 warn_inv = await message.reply(
                     text=(
                         f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
@@ -676,7 +697,9 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     parse_mode="Markdown",
                     reply_markup=admin_req_kb,
                 )
-                asyncio.create_task(auto_delete_notification(warn_inv, 15))
+                await db.add_invite_warning(message.chat.id, message.from_user.id, warn_inv.message_id)
+                set_user_invite_warn_msg(message.chat.id, message.from_user.id, warn_inv.message_id)
+                asyncio.create_task(auto_delete_notification(warn_inv, 60))
                 return
 
     # 5. Media filtrlari (Stiker/GIF va Ovozli/Dumaloq video cheklovi)

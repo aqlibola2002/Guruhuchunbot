@@ -21,3 +21,24 @@ def make_progress_bar(percent: int | float, length: int = 10) -> str:
         filled = max(1, min(length - 1, raw))
 
     return "▰" * filled + "▱" * (length - filled)
+
+
+# Foydalanuvchilarga yuborilgan taklif talabi ogohlantirish xabarlari:
+# (chat_id, user_id) -> set[message_id]
+USER_INVITE_WARN_MSGS: dict[tuple[int, int], set[int]] = {}
+
+
+def set_user_invite_warn_msg(chat_id: int, user_id: int, message_id: int) -> None:
+    """Foydalanuvchiga yuborilgan ogohlantirish xabari ID sini saqlash."""
+    USER_INVITE_WARN_MSGS.setdefault((chat_id, user_id), set()).add(message_id)
+
+
+def pop_user_invite_warn_msgs(chat_id: int, user_id: int) -> list[int]:
+    """Foydalanuvchining barcha avvalgi ogohlantirish xabarlari ID larini olish va o'chirish."""
+    return list(USER_INVITE_WARN_MSGS.pop((chat_id, user_id), set()))
+
+
+def pop_user_invite_warn_msg(chat_id: int, user_id: int) -> int | None:
+    """Foydalanuvchining oxirgi ogohlantirish xabari ID sini olish va o'chirish."""
+    msgs = pop_user_invite_warn_msgs(chat_id, user_id)
+    return msgs[-1] if msgs else None

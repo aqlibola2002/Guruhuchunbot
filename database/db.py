@@ -110,6 +110,14 @@ class Database:
                     key TEXT PRIMARY KEY,
                     value TEXT DEFAULT ''
                 );
+
+                CREATE TABLE IF NOT EXISTS invite_warnings (
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    message_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (chat_id, user_id, message_id)
+                );
                 """
             )
             # Mavjud bazalar uchun yangi ustunlarni tekshirib qo'shish
@@ -639,6 +647,41 @@ class Database:
             )
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+    async def add_invite_warning(self, chat_id: int, user_id: int, message_id: int) -> None:
+        """Foydalanuvchiga yuborilgan taklif talabi ogohlantirish xabarini bazada saqlash."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            try:
+                await conn.execute(
+                    """
+                    INSERT OR IGNORE INTO invite_warnings (chat_id, user_id, message_id)
+                    VALUES (?, ?, ?)
+                    """,
+                    (chat_id, user_id, message_id),
+                )
+                await conn.commit()
+            except Exception:
+                pass
+
+    async def pop_invite_warnings(self, chat_id: int, user_id: int) -> list[int]:
+        """Foydalanuvchining barcha avvalgi ogohlantirish xabarlari ID larini olish va bazadan o'chirish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            try:
+                cursor = await conn.execute(
+                    "SELECT message_id FROM invite_warnings WHERE chat_id = ? AND user_id = ?",
+                    (chat_id, user_id),
+                )
+                rows = await cursor.fetchall()
+                msg_ids = [r[0] for r in rows]
+                if msg_ids:
+                    await conn.execute(
+                        "DELETE FROM invite_warnings WHERE chat_id = ? AND user_id = ?",
+                        (chat_id, user_id),
+                    )
+                    await conn.commit()
+                return msg_ids
+            except Exception:
+                return []
 
     # ── Majburiy kanallar (Mandatory Channels) ─────────────────────────
     async def add_mandatory_channel(

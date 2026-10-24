@@ -10,18 +10,19 @@ from aiogram.types import (
     ChatJoinRequest,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    ChatPermissions,
     User,
 )
 from database.db import db
 from filters.admin_filter import is_admin
-from handlers.admin import get_settings_keyboard
-from services.ui_utils import make_progress_bar
+from services.ui_utils import make_progress_bar, pop_user_invite_warn_msg, pop_user_invite_warn_msgs
 
 logger = logging.getLogger(__name__)
 router = Router(name="group_events")
+RECENT_WELCOMES: dict[tuple[int, int], float] = {}
 
 
-async def auto_delete_msg(msg: Message, delay: int = 90) -> None:
+async def auto_delete_msg(msg: Message, delay: int = 60) -> None:
     await asyncio.sleep(delay)
     try:
         await msg.delete()
@@ -105,21 +106,46 @@ async def send_invite_notification(
     inviter_mention = f"[{inviter_name}](tg://user?id={inviter.id})"
     new_user_name = new_user.full_name or "Yangi a'zo"
 
+    # Avvalgi barcha ogohlantirish xabarlarini guruhdan avtomatik o'chirib tashlaymiz
+    db_warns = await db.pop_invite_warnings(chat_id, inviter.id)
+    mem_warns = pop_user_invite_warn_msgs(chat_id, inviter.id)
+    for old_warn_id in set(db_warns + mem_warns):
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=old_warn_id)
+        except Exception:
+            pass
+
     if min_req > 0:
         percent = min(100, int(round((total_invites / min_req) * 100)))
         bar = make_progress_bar(percent)
 
         if total_invites >= min_req:
+            # Foydalanuvchi talabni to'liq bajardi — yozish huquqini to'liq beramiz
+            try:
+                await bot.restrict_chat_member(
+                    chat_id=chat_id,
+                    user_id=inviter.id,
+                    permissions=ChatPermissions(
+                        can_send_messages=True,
+                        can_send_media_messages=True,
+                        can_send_polls=True,
+                        can_send_other_messages=True,
+                        can_add_web_page_previews=True,
+                    ),
+                )
+            except Exception:
+                pass
+
             text = (
                 f"🎉 **TABRIKLAYMIZ, {inviter_mention}!** 🎉\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 **Yangi qo'shilgan a'zo:** {new_user_name}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📊 **Takliflaringiz:** **{total_invites} / {min_req} ta (100% ✅)**\n"
+                f"📊 **Jami takliflaringiz:** **{total_invites} / {min_req} ta (100% ✅)**\n"
                 f"📈 **Jarayon:** {bar} **100%**\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"✨ Siz guruhda yozish talabini to'liq bajardingiz!\n"
-                f"💬 Endi guruhda bemalol va erkin xabar yoza olasiz!"
+                f"✅ **Siz guruhda yozish uchun talab qilingan barcha a'zolarni qo'shdingiz!**\n"
+                f"💬 **Endi guruhda bemalol va erkin xabar yozishingiz mumkin!** ✨"
             )
         else:
             left = min_req - total_invites
@@ -149,7 +175,8 @@ async def send_invite_notification(
             text=text,
             parse_mode="Markdown",
         )
-        asyncio.create_task(auto_delete_msg(msg, 20))
+        # Xabar 1 daqiqa (60 soniya) turadi
+        asyncio.create_task(auto_delete_msg(msg, 60))
     except Exception as e:
         logger.debug(f"Taklif xabarini yuborishda xatolik: {e}")
 
@@ -158,6 +185,13 @@ async def send_welcome_message(bot: Bot, chat_id: int, chat_title: str, new_user
     """Kutib olish (Welcome) xabarini yuborish."""
     if group.get("welcome_enabled", 1) != 1:
         return
+
+    # Takroriy welcome xabarini yubormaslik (chat_member va new_chat_members bir vaqtda kelganda)
+    now_t = asyncio.get_event_loop().time()
+    w_key = (chat_id, new_user.id)
+    if now_t - RECENT_WELCOMES.get(w_key, 0.0) < 5.0:
+        return
+    RECENT_WELCOMES[w_key] = now_t
 
     clean_name = (
         (new_user.full_name or "Foydalanuvchi")
@@ -253,7 +287,7 @@ async def send_welcome_message(bot: Bot, chat_id: int, chat_title: str, new_user
             disable_web_page_preview=True,
         )
     await db.set_last_welcome_msg_id(chat_id, welcome_msg.message_id)
-    asyncio.create_task(auto_delete_msg(welcome_msg, 25))
+    asyncio.create_task(auto_delete_msg(welcome_msg, 60))
 
 
 # ── Foydalanuvchilar qo'shilganda yoki kirganda (chat_member yangilanishi) ──
