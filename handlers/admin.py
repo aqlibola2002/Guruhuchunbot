@@ -707,6 +707,23 @@ async def build_mandatory_channels_view(
     if action_btns:
         kb_rows.append(action_btns)
 
+    # Eng yuqorida — Shaxsiy menyuda (Lichkada) kanal ulash tugmasi
+    try:
+        me = await bot.get_me()
+        bot_username = me.username or ""
+        pm_connect_url = f"https://t.me/{bot_username}?start=mchan_{group_chat_id}"
+        kb_rows.insert(
+            0,
+            [
+                InlineKeyboardButton(
+                    text="📲 Shaxsiy menyuda ulash (Lichkaga o'tish)",
+                    url=pm_connect_url,
+                )
+            ],
+        )
+    except Exception:
+        pass
+
     text += (
         f"💡 **Yangi kanal ulash usullari:**\n"
         f"1️⃣ **Post uzatish (Eng oson va xatosiz):**\n"
@@ -1253,6 +1270,9 @@ async def cb_mchan_clear(call: CallbackQuery, bot: Bot) -> None:
         pass
 
 
+USER_ACTIVE_GROUP: dict[int, int] = {}
+
+
 # ── Shaxsiy chatda (Lichkada) Homiy kanalni forward orqali qabul qilish ──
 @router.message(F.chat.type == "private", F.forward_from_chat)
 async def on_private_forward_channel_post(message: Message, bot: Bot) -> None:
@@ -1266,6 +1286,49 @@ async def on_private_forward_channel_post(message: Message, bot: Bot) -> None:
     username = f_chat.username or ""
 
     user_id = message.from_user.id if message.from_user else 0
+    target_group_id = USER_ACTIVE_GROUP.get(user_id)
+
+    # Agar foydalanuvchi ma'lum bir guruhdan deep-link orqali kelgan bo'lsa
+    if target_group_id:
+        group = await db.get_or_create_group(target_group_id)
+        grp_title = group.get("title") or f"Guruh {target_group_id}"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛡 Admin tasdiq (Zayavka)",
+                        callback_data=f"pm_setmode:{target_group_id}:{channel_id}:1",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="👥 Oddiy to'liq a'zolik",
+                        callback_data=f"pm_setmode:{target_group_id}:{channel_id}:0",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Boshqa guruhni tanlash",
+                        callback_data="pm_grplist",
+                    ),
+                ],
+            ]
+        )
+        await message.reply(
+            f"📢 **KANAL QABUL QILINDI!** 🚀\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"├ 📌 **Kanal:** «**{title}**»\n"
+            f"├ 🆔 **ID:** `{channel_id}`\n"
+            f"└ 🏛 **Guruh:** «**{grp_title}**»\n\n"
+            f"⚙️ **Kanalni qaysi rejimda ulashni xohlaysiz?**\n\n"
+            f"1️⃣ **🛡 Admin tasdiq (Zayavka):** Foydalanuvchilar kanalga ariza (join request) yuborishi bilanoq guruhda bemalol yoza oladi.\n"
+            f"2️⃣ **👥 Oddiy a'zolik:** Foydalanuvchi kanalga to'liq a'zo bo'lgandan keyingina yoza oladi.\n\n"
+            f"👇 Rejimni tanlang:",
+            reply_markup=kb,
+            parse_mode="Markdown",
+        )
+        return
+
     admin_groups = await get_user_admin_groups(bot, user_id)
 
     if not admin_groups:
@@ -1661,6 +1724,7 @@ async def cb_pm_ref(call: CallbackQuery, bot: Bot) -> None:
     if not call.message or not call.from_user:
         return
     group_chat_id = int(call.data.split(":", 1)[1])
+    USER_ACTIVE_GROUP[call.from_user.id] = group_chat_id
 
     text, kb = await build_pm_group_channels_view(bot, group_chat_id)
     try:
@@ -1668,6 +1732,221 @@ async def cb_pm_ref(call: CallbackQuery, bot: Bot) -> None:
         await call.answer("🔄 Yangilandi!")
     except Exception:
         await call.answer("Ma'lumotlar eng so'nggi holatda.")
+
+
+# ── Shaxsiy chatda (Lichkada) deep-link orqali kanal ulash (/start mchan_...) ──
+@router.message(F.chat.type == "private", F.text.regexp(r"^/start\s+mchan_"))
+async def on_private_start_mchan(message: Message, bot: Bot) -> None:
+    text_val = (message.text or "").strip()
+    parts = text_val.split()
+    if len(parts) < 2 or not parts[1].startswith("mchan_"):
+        return
+
+    raw_gid = parts[1].replace("mchan_", "").strip()
+    try:
+        group_chat_id = int(raw_gid)
+    except ValueError:
+        await message.reply("❌ Noto'g'ri guruh identifikatori!", parse_mode="Markdown")
+        return
+
+    user_id = message.from_user.id if message.from_user else 0
+    from config import ADMIN_IDS
+    if user_id not in ADMIN_IDS:
+        if not await is_admin(bot, group_chat_id, user_id):
+            await message.reply(
+                "❌ **Ruxsat berilmadi!**\n"
+                "Siz ushbu guruhda administrator emassiz. Faqat guruh adminlari homiy kanal ulay oladi.",
+                parse_mode="Markdown",
+            )
+            return
+
+    # Foydalanuvchining ayni vaqtdagi faol guruhini saqlash
+    USER_ACTIVE_GROUP[user_id] = group_chat_id
+
+    group = await db.get_or_create_group(group_chat_id)
+    group_title = group.get("title") or f"Guruh {group_chat_id}"
+
+    # Bot admin bo'lgan kanallar
+    channels = await db.get_mandatory_channels(group_chat_id)
+    bot_channels = await db.get_bot_channels()
+    existing_ids = {str(c["channel_id"]).lower().replace("-100", "").lstrip("-") for c in channels}
+    existing_ids.update({str(c["channel_id"]).lower() for c in channels})
+
+    available_bot_channels = []
+    for bc in bot_channels:
+        bc_id_str = str(bc.get("channel_id", "")).strip().lower()
+        num_clean = bc_id_str.replace("-100", "").lstrip("-")
+        if (
+            bc_id_str not in existing_ids
+            and num_clean not in existing_ids
+            and f"-100{num_clean}" not in existing_ids
+        ):
+            available_bot_channels.append(bc)
+
+    kb_rows: list[list[InlineKeyboardButton]] = []
+    if available_bot_channels:
+        for bc in available_bot_channels[:4]:
+            b_title = bc.get("title") or str(bc.get("channel_id"))
+            b_type = "🔒 Zayavka" if bc.get("is_join_request") == 1 else "📢 Kanal"
+            kb_rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"➕ {str(b_title)[:22]} ulash",
+                        callback_data=f"pm_badd:{group_chat_id}:{bc.get('channel_id')}",
+                    )
+                ]
+            )
+
+    kb_rows.append(
+        [
+            InlineKeyboardButton(
+                text="⚙️ Guruh kanallarini ko'rish",
+                callback_data=f"pm_grp:{group_chat_id}",
+            ),
+            InlineKeyboardButton(
+                text="🔙 Barcha guruhlarim",
+                callback_data="pm_grplist",
+            ),
+        ]
+    )
+
+    await message.reply(
+        f"📢 **«{group_title}» GURUHIGA HOMIY KANAL ULASH** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Hurmatli admin! Ushbu guruhingizga homiy kanal (maxfiy yoki ochiq) ulash uchun "
+        f"quyidagi 2 ta qulay usuldan birini bajaring:\n\n"
+        f"1️⃣ ✉️ **Post uzatish (Eng oson va 100% xatosiz!):**\n"
+        f"   Kanalingizdan istalgan bitta xabarni (postni) to'g'ridan-to'g'ri **shu yerga (botga) forward qiling (uzating)**!\n"
+        f"   Bot kanal nomini va maxfiy ID sini bir zumda aniqlaydi.\n\n"
+        f"2️⃣ 🔗 **Havola yoki ID yuborish:**\n"
+        f"   Kanal havolasini yoki ID sini shu yerga yozib yuboring:\n"
+        f"   Masalan:\n"
+        f"   • `https://t.me/+AbCdEfGh` (Maxfiy havola)\n"
+        f"   • `https://t.me/kanalim` yoki `@kanalim`\n"
+        f"   • `-1001234567890` (Kanal ID si)\n\n"
+        f"ℹ️ *Eslatma: Bot kanal a'zolarini va arizalarni tekshira olishi uchun botni ushbu kanalga **Administrator (Admin)** qilib qo'shishingiz shart!*",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows),
+        parse_mode="Markdown",
+        disable_web_page_preview=True,
+    )
+
+
+# ── Shaxsiy chatda matn (havola yoki ID) orqali kanal kiritish ────────
+@router.message(F.chat.type == "private", F.text, ~F.text.startswith("/"))
+async def on_private_text_channel_input(message: Message, bot: Bot) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    raw_text = (message.text or "").strip()
+    target_group_id = USER_ACTIVE_GROUP.get(user_id)
+
+    if not target_group_id:
+        admin_groups = await get_user_admin_groups(bot, user_id)
+        if len(admin_groups) == 1:
+            target_group_id = admin_groups[0]["chat_id"]
+            USER_ACTIVE_GROUP[user_id] = target_group_id
+        elif admin_groups:
+            text, kb = await build_pm_groups_list_view(bot, user_id)
+            await message.reply(
+                "💡 Avval qaysi guruhingizga kanal ulamoqchi ekanligingizni tanlang:\n\n" + text,
+                reply_markup=kb,
+                parse_mode="Markdown",
+            )
+            return
+        else:
+            await message.reply("⚠️ Siz bot qo'shilgan birorta guruhda administrator emassiz!", parse_mode="Markdown")
+            return
+
+    group = await db.get_or_create_group(target_group_id)
+    grp_title = group.get("title") or f"Guruh {target_group_id}"
+
+    # 1. Maxfiy havola bo'lsa
+    if raw_text.startswith("https://t.me/+") or "joinchat" in raw_text:
+        matched = await db.find_bot_channel_by_link(raw_text)
+        if matched:
+            chid = matched["channel_id"]
+            ctitle = matched.get("title") or str(chid)
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🛡 Admin tasdiq (Zayavka)",
+                            callback_data=f"pm_setmode:{target_group_id}:{chid}:1",
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="👥 Oddiy to'liq a'zolik",
+                            callback_data=f"pm_setmode:{target_group_id}:{chid}:0",
+                        ),
+                    ],
+                ]
+            )
+            await message.reply(
+                f"📢 **KANAL ANIQLANDI!** ✅\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"├ 📌 **Kanal:** «**{ctitle}**»\n"
+                f"├ 🆔 **ID:** `{chid}`\n"
+                f"└ 🏛 **Guruh:** «**{grp_title}**»\n\n"
+                f"👇 Ushbu kanal qaysi rejimda ulansin?",
+                reply_markup=kb,
+                parse_mode="Markdown",
+            )
+            return
+        else:
+            await message.reply(
+                f"⚠️ **MAXFIY KANAL HAVOLASI HAQIDA** 🔒\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Telegram cheklovlari tufayli bot maxfiy taklif havolasidan (`+...`) kanal ID sini to'g'ridan-to'g'ri bila olmaydi.\n\n"
+                f"💡 **Juda oson yechim:**\n"
+                f"O'sha kanaldan **istalgan bitta postni (xabarni) to'g'ridan-to'g'ri shu yerga (botga) forward qiling (uzating)**!\n"
+                f"Bot uni avtomatik aniqlab «{grp_title}» guruhiga ulab beradi.",
+                parse_mode="Markdown",
+            )
+            return
+
+    # 2. Username, havola yoki -100... ID bo'lsa
+    ch_target: int | str = raw_text
+    if "t.me/" in raw_text:
+        ch_target = f"@{raw_text.split('t.me/')[1].split('/')[0].split('?')[0]}"
+    elif raw_text.startswith("-100") or (raw_text.startswith("-") and raw_text[1:].isdigit()) or raw_text.isdigit():
+        ch_target = int(raw_text)
+
+    try:
+        chat_obj = await bot.get_chat(ch_target)
+        chid = chat_obj.id
+        ctitle = chat_obj.title or str(chid)
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛡 Admin tasdiq (Zayavka)",
+                        callback_data=f"pm_setmode:{target_group_id}:{chid}:1",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="👥 Oddiy to'liq a'zolik",
+                        callback_data=f"pm_setmode:{target_group_id}:{chid}:0",
+                    ),
+                ],
+            ]
+        )
+        await message.reply(
+            f"📢 **KANAL TOPILDI!** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"├ 📌 **Kanal:** «**{ctitle}**»\n"
+            f"├ 🆔 **ID:** `{chid}`\n"
+            f"└ 🏛 **Guruh:** «**{grp_title}**»\n\n"
+            f"👇 Ushbu kanal qaysi rejimda ulansin?",
+            reply_markup=kb,
+            parse_mode="Markdown",
+        )
+    except Exception:
+        await message.reply(
+            f"❌ Kanal topilmadi yoki bot u yerda admin emas.\n\n"
+            f"💡 **Tavsiya:** Kanaldan istalgan bitta postni to'g'ridan-to'g'ri botga forward qiling (uzating) — bot uni xatosiz qabul qiladi!",
+            parse_mode="Markdown",
+        )
+
 
 
 
