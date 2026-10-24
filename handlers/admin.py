@@ -419,6 +419,41 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
 
     sub_cmd = parts[1].strip().lower()
 
+    # 1.1 /kanal list yoki /kanal royxat
+    if sub_cmd in ("list", "royxat", "ro'yxat"):
+        channels = await db.get_mandatory_channels(message.chat.id)
+        if not channels:
+            await message.reply(
+                f"📢 **HOMIY KANALLAR RO'YXATI** 📢\n\n"
+                f"Guruhda hozircha majburiy homiy kanallar belgilanmagan.\n\n"
+                f"➕ Qo'shish: `/kanal @kanal_nomi`",
+                parse_mode="Markdown",
+            )
+            return
+
+        text = (
+            f"📢 **MAJBURIY HOMIY KANALLAR RO'YXATI** 📢\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📍 Guruh: «{message.chat.title}»\n\n"
+        )
+        for idx, ch in enumerate(channels, 1):
+            title = ch.get("title") or ch.get("channel_id")
+            chid = ch.get("channel_id")
+            link = ch.get("invite_link") or (f"https://t.me/{chid.lstrip('@')}" if str(chid).startswith("@") else "")
+            prefix = "└" if idx == len(channels) else "├"
+            if link:
+                text += f"{prefix} {idx}. **[{title}]({link})** (`{chid}`)\n"
+            else:
+                text += f"{prefix} {idx}. **{title}** (`{chid}`)\n"
+
+        text += (
+            f"\n📊 Jami: **{len(channels)}** ta homiy kanal\n\n"
+            f"➕ **Kanal qo'shish:** `/kanal @kanal_nomi`\n"
+            f"➖ **Kanalni o'chirish:** `/kanal ochir @kanal_nomi`"
+        )
+        await message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
+        return
+
     # 2. Barchasini tozalash: /kanal tozalash
     if sub_cmd in ("tozalash", "clear", "hammasini_ochir"):
         await db.clear_mandatory_channels(message.chat.id)
@@ -1492,5 +1527,260 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
             f"👮‍♂️ Admin: {get_admin_name(message)}",
             parse_mode="Markdown",
         )
+
+
+# ── /setwelcome [matn] va /delwelcome ───────────────────────────────
+@router.message(Command("setwelcome", "salom", "kutib_olish", ignore_case=True))
+async def cmd_set_welcome(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    text = (message.text or "").strip()
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        current_tpl = await db.get_custom_welcome(message.chat.id)
+        current_status = f"\n\n📌 **Hozirgi o'rnatilgan matn:**\n_{current_tpl}_" if current_tpl else "\n\n📌 **Hozirgi holat:** Standart chiroyli salomlashish yoqilgan."
+        await message.reply(
+            f"👋 **YANGI A'ZOLARNI KUTIB OLISH MATNINI SOZLASH** 📝\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Foydalanish: `/setwelcome [siz xohlagan matn]`\n\n"
+            f"💡 **Ishlatish mumkin bo'lgan o'zgaruvchilar:**\n"
+            f"• `{{name}}` — A'zoning ismi va Telegram profili havolasi\n"
+            f"• `{{title}}` — Guruhning rasmiy nomi\n"
+            f"• `{{username}}` — A'zoning @username nomi\n"
+            f"• `{{first_name}}` — A'zoning faqat ismi\n"
+            f"• `{{members}}` — Guruhdagi jami a'zolar soni\n"
+            f"• `{{rules}}` — Guruhda yozish uchun a'zo qo'shish talabi qoidasi\n\n"
+            f"📝 **Misol:**\n"
+            f"`/setwelcome Assalomu alaykum {{name}}! {{title}} guruhimizga xush kelibsiz! Marhamat, suhbatga qo'shiling.`\n"
+            f"{current_status}\n\n"
+            f"🗑 *Standart holatga qaytarish uchun:* `/delwelcome`",
+            parse_mode="Markdown",
+        )
+        return
+
+    custom_text = parts[1].strip()
+    await db.set_custom_welcome(message.chat.id, custom_text)
+    await message.reply(
+        f"✅ **YANGI A'ZOLARNI KUTIB OLISH MATNI O'RNATILDI!** 🎉\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📌 **Yangi salomlashish matni:**\n{custom_text}\n\n"
+        f"💡 Endi guruhga yangi a'zo kirganda yoki qo'shilganda bot ushbu matn bilan kutib oladi!\n\n"
+        f"👮‍♂️ Admin: {get_admin_name(message)}",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("delwelcome", "resetwelcome", "salom_ochir", ignore_case=True))
+async def cmd_del_welcome(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    await db.reset_custom_welcome(message.chat.id)
+    await message.reply(
+        f"🔄 **KUTIB OLISH MATNI STANDART HOLATGA QAYTARILDI!** ✅\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Endi bot yangi qo'shilgan a'zolarga standart chiroyli va to'liq ma'lumotli xabar yuboradi.\n\n"
+        f"👮‍♂️ Admin: {get_admin_name(message)}",
+        parse_mode="Markdown",
+    )
+
+
+# ── /qoidalar va /yangiqoida ─────────────────────────────────────────
+@router.message(Command("qoidalar", "rules", ignore_case=True))
+async def cmd_rules(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq guruhlarda ishlaydi!")
+        return
+
+    rules = await db.get_group_rules(message.chat.id)
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    min_inv = int(group.get("min_invites") or 0)
+    inv_info = f"\n• 👥 Guruhda yozish uchun kamida **{min_inv} ta a'zo qo'shish shart**!" if min_inv > 0 and group.get("invites_enabled", 1) == 1 else ""
+
+    if rules:
+        text = f"📜 **«{message.chat.title}» GURUHI QOIDALARI** 📜\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n{rules}{inv_info}\n\n✅ *Guruhda yozayotgan har bir a'zo ushbu qoidalarga rioya qilishi shart!*"
+    else:
+        text = (
+            f"📜 **«{message.chat.title}» GURUHI QOIDALARI** 📜\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"1️⃣ Reklama, begona havolalar va spam tarqatish taqiqlanadi 🚫\n"
+            f"2️⃣ Boshqa a'zolarni haqorat qilish va behayo so'zlar ishlatish man etiladi 🤬\n"
+            f"3️⃣ Zararli fayllar (.apk, viruslar) yuborish qat'iyan man etiladi 🛑\n"
+            f"4️⃣ Guruh a'zolari bir-birini hurmat qilishi shart ✨{inv_info}\n\n"
+            f"✏️ *Adminlar yangi qoida o'rnatishi uchun:* `/yangiqoida [qoidalar matni]`"
+        )
+    await message.reply(text, parse_mode="Markdown")
+
+
+@router.message(Command("yangiqoida", "setrules", "qoidaqoy", ignore_case=True))
+async def cmd_set_rules(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    text = (message.text or "").strip()
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(
+            "📜 **Guruh qoidalarini o'rnatish:**\n\n"
+            "Foydalanish: `/yangiqoida [qoidalar matni]`\n\n"
+            "Masalan:\n"
+            "`/yangiqoida 1. Reklama mumkin emas! 2. Hurmat saqlang!`",
+            parse_mode="Markdown",
+        )
+        return
+
+    new_rules = parts[1].strip()
+    await db.set_group_rules(message.chat.id, new_rules)
+    await message.reply(
+        f"✅ **GURUH QOIDALARI YANGILANDI!** 📜\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"{new_rules}\n\n"
+        f"👮‍♂️ Admin: {get_admin_name(message)}",
+        parse_mode="Markdown",
+    )
+
+
+# ── /ogohlantir, /unwarn, /kechir, /ogohlantirishlar ────────────────
+@router.message(Command("ogohlantir", "warn", ignore_case=True))
+async def cmd_warn(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    target = await resolve_target(message)
+    if target.error:
+        await message.reply(
+            "⚠️ **Foydalanuvchiga ogohlantirish berish:**\n\n"
+            "Format:\n"
+            "• Xabarga **Reply** qilib: `/ogohlantir [sabab]`\n"
+            "• Yoki username bilan: `/ogohlantir @username [sabab]`\n"
+            "• Yoki Telegram ID bilan: `/ogohlantir 123456789 [sabab]`",
+            parse_mode="Markdown",
+        )
+        return
+
+    if target.user_id == get_bot_id(bot) or await is_admin(bot, message.chat.id, target.user_id):
+        await message.reply("❌ Bot yoki guruh adminini ogohlantirib bo'lmaydi!")
+        return
+
+    reason = target.remaining_text.strip() or "Qoidalarni buzganlik"
+    current_warns = await db.add_warn(message.chat.id, target.user_id, reason)
+
+    if current_warns >= MAX_WARNS:
+        # Chegaradan oshganda yozishdan cheklash (1 kun)
+        await db.reset_warns(message.chat.id, target.user_id)
+        until_date = datetime.now(timezone.utc) + timedelta(days=1)
+        try:
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=target.user_id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until_date,
+            )
+            await db.record_punishment(message.chat.id, "mute")
+        except Exception:
+            pass
+
+        await message.reply(
+            f"🚫 **OGOHLANTIRISHLAR LIMITI TUGADI!** 🚫\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"⚠️ **Ogohlantirishlar:** **{current_warns} / {MAX_WARNS} ta**\n"
+            f"⏳ **Jazo:** 1 kunga yozishdan cheklandi (MUTE)!\n"
+            f"📝 **Oxirgi sabab:** {reason}\n"
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply(
+            f"⚠️ **OGOHLANTIRISH BERILDI!** ⚠️\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"📊 **Ogohlantirishlar soni:** **{current_warns} / {MAX_WARNS} ta**\n"
+            f"📝 **Sabab:** {reason}\n"
+            f"⚠️ *Eslatma: {MAX_WARNS} ta ogohlantirish to'plansa, avtomatik jazo qo'llaniladi!*\n"
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+
+
+@router.message(Command("unwarn", "kechir", "ogohlantirish_ol", ignore_case=True))
+async def cmd_unwarn(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    target = await resolve_target(message)
+    if target.error:
+        await message.reply(
+            "🕊 **Ogohlantirishni olib tashlash (Kechirish):**\n\n"
+            "Format: Xabarga **Reply** qilib `/kechir` yoki `/unwarn @username` deb yozing.",
+            parse_mode="Markdown",
+        )
+        return
+
+    new_count = await db.remove_warn(message.chat.id, target.user_id)
+    await message.reply(
+        f"🕊 **OGOHLANTIRISH OLIB TASHLANDI!** ✅\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 **Foydalanuvchi:** {target.full_name}\n"
+        f"📊 **Qolgan ogohlantirishlar:** **{new_count} / {MAX_WARNS} ta**\n"
+        f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("ogohlantirishlar", "warns", ignore_case=True))
+async def cmd_warns_status(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    target = await resolve_target(message)
+    if target.error:
+        uid = message.from_user.id if message.from_user else 0
+        name = message.from_user.full_name if message.from_user else "Siz"
+    else:
+        uid = target.user_id
+        name = target.full_name
+
+    warn_cnt = await db.get_warns(message.chat.id, uid)
+    await message.reply(
+        f"📊 **OGOHLANTIRISHLAR STATUSI** ⚠️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 **Foydalanuvchi:** {name}\n"
+        f"⚠️ **Ogohlantirishlar soni:** **{warn_cnt} / {MAX_WARNS} ta**",
+        parse_mode="Markdown",
+    )
+
 
 
