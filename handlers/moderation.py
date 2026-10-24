@@ -169,63 +169,161 @@ async def auto_delete_notification(msg: Message, delay: int = AUTO_DELETE_NOTIFI
         pass
 
 
-def normalize_text_for_profanity(text: str) -> tuple[str, set[str], str]:
+CYRILLIC_TO_LATIN: dict[str, str] = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'j', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'x', 'ҳ': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sh',
+    'ъ': '', 'ы': 'i', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+    'ў': 'o', 'ғ': 'g', 'қ': 'q',
+    'ә': 'a', 'ө': 'o', 'ү': 'u', 'ұ': 'u', 'і': 'i',
+}
+
+LEET_MAP: dict[str, str] = {
+    "@": "a", "4": "a", "0": "o", "1": "i", "!": "i", "|": "i",
+    "3": "e", "$": "s", "5": "s", "7": "t",
+}
+
+# So'kinish asoslari (Root stems) - compact matnda uchrasa 100% so'kinish hisoblanadi
+PROFANITY_COMPACT_STEMS: list[str] = [
+    # O'zbekcha haqorat asoslari
+    "jalap", "jalab", "jallap", "jaloq", "zhalap", "zhalab",
+    "dalbay", "dalbae", "dolbay", "dolbae", "dalboy", "dolboy",
+    "qotoq", "qotaq", "kotog", "kotoq", "qotog",
+    "siktir", "sikish", "sikiw", "sikvott", "sikvor", "sikibd", "sikkan",
+    "sikaman", "sikasan", "sikadi", "sikamiz", "sikasiz", "sikay", "sike",
+    "gandon", "gondon",
+    "pidar", "pidor", "pederas",
+    "itvachcha", "haromzoda",
+    "kotvachcha", "kotqoqi", "kotsan", "kotmisan", "koting", "kotini", "kotbaqa",
+    # Ruscha haqorat asoslari
+    "blyad", "blyat", "bliad", "blyadin", "blyadstv",
+    "nahuy", "nahui", "naxuy", "naxui", "poxuy", "poxui", "xuylo", "huylo", "xuyna", "huyna",
+    "xuesos", "huesos", "xuela", "huela", "xuyet", "huyet",
+    "pizd",
+    "zaeb", "doeb", "proeb", "ueb", "yoban", "yobnut", "eban", "ebat", "ebal", "ebli",
+    "suchk", "suchar",
+    "mudak", "mudil",
+    "shlyux", "shlyuh", "shlux",
+    "zalup",
+]
+
+# Qisqa so'kinish so'zlari (faqat mustaqil so'z sifatida tekshiriladi)
+SHORT_PROFANITY_WORDS: set[str] = {
+    # O'zbekcha
+    "am", "amcha", "amvachcha", "aming", "amiga", "amingga", "amxor", "amim", "amni", "amdi",
+    "om", "omcha", "oming", "omiga",
+    "kot", "kotsan", "kotmisan", "koting", "kotingga", "kotini", "kotvachcha",
+    "chmo", "chmoshnik", "padla", "haromi",
+    # Ruscha
+    "xuy", "huy", "xui", "hui",
+    "blya", "blet",
+    "suka", "suki",
+    "mudo", "ebik",
+    "xer", "xernya", "poxer",
+}
+
+# Qarindosh-urug' bilan haqorat qilish regexi
+COMPOUND_PROFANITY_PATTERN = re.compile(
+    r"\b(onan|onen|enen|enas|otan|opan|singlin|urugin|avlodin|naslin)\w{0,6}\s*(?:[^\w\s]{1,5}\s*)?(?:ni|di|ning|ga)?\s*\w{0,10}\s*(sik|am|kot|chmo|it|emgan)",
+    re.IGNORECASE
+)
+
+# Sik / sk asosi tekshiruvi (faqat 'sikl' va 'siqil' kabi odatiy so'zlardan tashqari)
+SIK_PATTERN = re.compile(
+    r"\b(sik\w*|sk\w+|siq(?:ay|aman|asan|adi|amiz|asiz|ish|tir\w*|vorg\w*))\b",
+    re.IGNORECASE
+)
+
+SAFE_WORDS: set[str] = {
+    "sikl", "siklik", "siqilma", "siqilish", "siqilmay", "siqilmang", "siqilyapman", "siqilmaslik"
+}
+
+
+def normalize_text_for_profanity(text: str) -> tuple[str, set[str], str, str, str]:
     """
-    Matnni so'kinishlarni aniqlash uchun tozalash va leet-kodlarni o'girish.
-    Qaytaradi: (t_unified, words_set, compact_no_spaces)
+    Matnni har qanday so'kinish, leet-kod va niqoblangan belgilardan tozalash.
+    Qaytaradi: (t_lat, words_set, compact, compact_reduced, compact_single)
     """
     if not text:
-        return "", set(), ""
+        return "", set(), "", "", ""
     t = text.lower()
 
-    # Leetspeak va raqamli niqoblarni harflarga o'girish
-    leet_map = {
-        "@": "a", "4": "a", "0": "o", "1": "i", "!": "i", "|": "i",
-        "3": "e", "$": "s", "5": "s", "7": "t",
-    }
-    for char, rep in leet_map.items():
-        t = t.replace(char, rep)
+    # 0. Tutuq belgilari va apostroflarni tozalash (ko't -> kot, qotog'im -> qotogim, kõtsan -> kotsan)
+    t = t.replace("õ", "o").replace("ō", "o").replace("ğ", "g")
+    t = re.sub(r"['`ʻʼ’‘´\"]", "", t)
 
-    # Ruscha va lotin o'xshash harflarni unifikatsiya qilish
-    trans = str.maketrans({
-        "а": "a", "в": "v", "е": "e", "к": "k", "м": "m", "н": "h",
-        "о": "o", "р": "r", "с": "s", "т": "t", "у": "u", "х": "x",
-    })
-    t_unified = t.translate(trans)
+    # 1. Kirill harflarini to'liq lotinga o'girish
+    t_lat = "".join(CYRILLIC_TO_LATIN.get(c, c) for c in t)
 
-    # Belgilar va tinish belgilarini bo'shliqqa aylantirish
-    cleaned = re.sub(r"[^\w\s]", " ", t_unified)
+    # 2. Leetspeak raqam va maxsus belgilarni harfga aylantirish
+    for char, rep in LEET_MAP.items():
+        t_lat = t_lat.replace(char, rep)
+
+    # 3. Yopishgan tinish belgilarini olib tashlash (s.u.k.a -> suka, s.i.k.a.y -> sikay)
+    t_no_punct = re.sub(r"[\._\*\-\+~]", "", t_lat)
+
+    # 4. Yagona harflar oralig'idagi bo'shliqlarni birlashtirish ('s u k a' -> 'suka', 'b l e t' -> 'blet')
+    t_despaced = re.sub(r"(?<=\b\w)\s+(?=\w\b)", "", t_lat)
+    t_despaced_no_punct = re.sub(r"(?<=\b\w)\s+(?=\w\b)", "", t_no_punct)
+
+    # 5. So'zlar to'plami (barcha variantlarni o'z ichiga oladi)
+    cleaned = re.sub(r"[^\w\s]", " ", t_lat)
     words = set(cleaned.split())
+    words.update(re.sub(r"[^\w\s]", " ", t_despaced).split())
+    words.update(re.sub(r"[^\w\s]", " ", t_no_punct).split())
+    words.update(re.sub(r"[^\w\s]", " ", t_despaced_no_punct).split())
 
-    # Barcha tinish belgilari va bo'shliqlardan tozalangan ixcham matn (masalan: s.i.k.a.y -> sikay)
-    compact = re.sub(r"[^\w]", "", t_unified)
+    # 6. Bo'shliqsiz ixcham matn (masalan: s.i.k.a.y -> sikay, j a l a p -> jalap)
+    compact = re.sub(r"[^\w]", "", t_lat)
 
-    return t_unified, words, compact
+    # 7. Ketma-ket takrorlangan harflarni qisqartirish (masalan: siiiikaaaay -> siikay / sikay)
+    compact_reduced = re.sub(r"(.)\1{2,}", r"\1\1", compact)
+    compact_single = re.sub(r"(.)\1+", r"\1", compact)
+
+    return t_lat, words, compact, compact_reduced, compact_single
 
 
 def contains_profanity(text: str) -> bool:
-    """Xabar matnida haqorat va so'kinish so'zlari bor-yo'qligini 100% aniqlash."""
+    """Xabar matnida haqorat va so'kinish so'zlari bor-yo'qligini 100% universal aniqlash."""
     if not text:
         return False
 
-    t_unified, words, compact = normalize_text_for_profanity(text)
+    t_lat, words, compact, compact_red, compact_single = normalize_text_for_profanity(text)
 
+    # 1. Qisqa va o'tkir so'kinishlar (words to'plami ichida)
+    if any(sw in words for sw in SHORT_PROFANITY_WORDS):
+        return True
+
+    # 2. So'kinish asoslari (compact, compact_reduced va compact_single ichida)
+    for stem in PROFANITY_COMPACT_STEMS:
+        if stem in compact or stem in compact_red or stem in compact_single:
+            return True
+
+    # 3. Qarindosh-urug' bilan haqorat regexi (onangni..., enangni..., va h.k.)
+    if COMPOUND_PROFANITY_PATTERN.search(t_lat):
+        return True
+
+    # 4. Sik / sk asosi tekshiruvi (xavfsiz so'zlar himoyalangan)
+    for w in words:
+        if w in SAFE_WORDS:
+            continue
+        if SIK_PATTERN.match(w):
+            return True
+
+    # 5. Konfiguratsiyadagi qo'shimcha so'zlar ro'yxati tekshiruvi
     for kw in PROFANITY_KEYWORDS:
         kw_clean = kw.lower().strip()
         if not kw_clean:
             continue
-
         if " " in kw_clean:
             kw_compact = kw_clean.replace(" ", "")
-            if kw_clean in t_unified or kw_compact in compact:
+            if kw_clean in t_lat or kw_compact in compact:
                 return True
         else:
-            if len(kw_clean) <= 3:
-                if kw_clean in words:
-                    return True
-            else:
-                if kw_clean in words or kw_clean in compact:
-                    return True
+            if kw_clean in words or (len(kw_clean) >= 4 and kw_clean in compact):
+                return True
+
     return False
 
 
@@ -353,7 +451,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             asyncio.create_task(auto_delete_notification(notify, 60))
             return
 
-    # 0.2 Ismda reklama / havola tekshiruvi (Anti-Name Spam)
+    # 0.2 Ismda reklama / havola va so'kinish tekshiruvi (Anti-Name Spam & Profanity)
     if message.from_user and not user_is_admin:
         user_full_name = message.from_user.full_name or ""
         if LINK_PATTERN.search(user_full_name):
@@ -370,6 +468,26 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     f"🚫 {mention}, profilingiz ismida reklama havolasi mavjud!\n"
                     f"⚠️ Guruh xavfsizligi yuzasidan xabaringiz o'chirildi.\n"
                     f"💡 Iltimos, ismingizdagi havola yoki @username ni olib tashlang."
+                ),
+                parse_mode="Markdown",
+            )
+            asyncio.create_task(auto_delete_notification(notify, 60))
+            return
+
+        if contains_profanity(user_full_name):
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            except Exception:
+                pass
+            mention = safe_mention(message.from_user.first_name, message.from_user.id)
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"👤 **ISMDAGI NOJO'YA SO'Z ANIQLANDI** 🛡\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🚫 {mention}, profilingiz ismida haqoratli yoki so'kinish so'zi mavjud!\n"
+                    f"⚠️ Guruh madaniyati yuzasidan xabaringiz o'chirildi.\n"
+                    f"💡 Iltimos, ismingizdagi haqoratli so'zni tozalang."
                 ),
                 parse_mode="Markdown",
             )
@@ -1007,7 +1125,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     ),
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_notification(notify))
+                asyncio.create_task(auto_delete_notification(notify, 60))
             return
 
         if message.from_user:
@@ -1040,7 +1158,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                             ),
                             parse_mode="Markdown",
                         )
-                        asyncio.create_task(auto_delete_notification(notify_mute))
+                        asyncio.create_task(auto_delete_notification(notify_mute, 60))
                         return
                     except Exception:
                         pass
@@ -1056,7 +1174,7 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     ),
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_notification(notify))
+                asyncio.create_task(auto_delete_notification(notify, 60))
                 return
             else:
                 await message.reply(
@@ -1306,4 +1424,10 @@ async def cb_check_subscription(call: CallbackQuery, bot: Bot) -> None:
             f"❌ Hali {left_count} ta kanalga a'zo emassiz! Iltimos, barcha kanallarga a'zo bo'ling.",
             show_alert=True,
         )
+
+
+@router.edited_message()
+async def process_group_edited_message(message: Message, bot: Bot) -> None:
+    """Tahrirlangan xabarlarni ham to'liq tekshirish (so'kinish, reklama yoki virus bo'lsa darhol o'chirish)."""
+    await process_group_message(message, bot)
 
