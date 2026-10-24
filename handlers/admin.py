@@ -1213,7 +1213,7 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text=f"🈲 Arab/Raid spambot filtri: {mark(group.get('anti_arabic_enabled', 0))}",
+                text=f"🈲 Arab/Xitoy/Yapon/Kores filtri: {mark(group.get('anti_arabic_enabled', 1))}",
                 callback_data="toggle_anti_arabic",
             )
         ],
@@ -1310,10 +1310,10 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
         elif raw == "auto_approve":
             setting_key = "auto_approve_joins"
             current_val = group.get(setting_key, 1)
-        elif raw in ("night_mode", "anti_arabic", "anti_caps"):
+        elif raw in ("night_mode", "anti_caps"):
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 0)
-        elif raw in ("anti_flood", "anti_channel"):
+        elif raw in ("anti_flood", "anti_channel", "anti_arabic"):
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 1)
         else:
@@ -2348,7 +2348,7 @@ async def cmd_security_audit(message: Message, bot: Bot) -> None:
         1 if group.get("antiforward_enabled", 1) == 1 else 0,
         1 if group.get("anti_flood_enabled", 1) == 1 else 0,
         1 if group.get("anti_channel_enabled", 1) == 1 else 0,
-        1 if group.get("anti_arabic_enabled", 0) == 1 else 0,
+        1 if group.get("anti_arabic_enabled", 1) == 1 else 0,
         1 if group.get("anti_caps_enabled", 0) == 1 else 0,
         1 if inv_on else 0,
     ])
@@ -2366,7 +2366,7 @@ async def cmd_security_audit(message: Message, bot: Bot) -> None:
         f"├ 🔄 Forward xabarlar filtri: {s_icon(group.get('antiforward_enabled', 1))}\n"
         f"├ ⚡️ Anti-Flood (Spam oqimi): {s_icon(group.get('anti_flood_enabled', 1))}\n"
         f"├ 📢 Anti-Kanal (Anonim kanallar): {s_icon(group.get('anti_channel_enabled', 1))}\n"
-        f"├ 🈲 Anti-Raid / Arab botlar: {s_icon(group.get('anti_arabic_enabled', 0))}\n"
+        f"├ 🈲 Arab/Xitoy/Yapon/Kores filtri: {s_icon(group.get('anti_arabic_enabled', 1))}\n"
         f"├ 🔠 Anti-Caps Lock (Baqirish): {s_icon(group.get('anti_caps_enabled', 0))}\n"
         f"├ 🤬 So'kinish va haqorat: {s_icon(group.get('profanity_enabled', 1))}\n"
         f"└ 👥 Majburiy a'zo talabi: {'🟢 ' + str(min_inv) + ' ta a\'zo' if inv_on else '⚪️ O\'chirilgan'}\n\n"

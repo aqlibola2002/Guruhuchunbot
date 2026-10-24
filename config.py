@@ -48,16 +48,34 @@ SPAM_KEYWORDS: list[str] = [
     "oyiga million", "oson pul", "referal", "bonus oling"
 ]
 
-# Taqiqlangan so'kinish va haqorat so'zlari ro'yxati
+# Taqiqlangan so'kinish va haqorat so'zlari ro'yxati (O'zbekcha va Ruscha haqoratlar)
 PROFANITY_KEYWORDS: list[str] = [
-    "jalap", "jallap", "zhalap", "dalbayob", "dalbayop", "dolbayob", "dolbaeb",
-    "siktir", "sikaman", "sikay", "sikish", "sikey", "sikayotgan",
-    "qotoq", "qo'toq", "qotoqmisan", "qotoqbosh",
-    "gandon", "gondon", "pidar", "pidaraz", "pederast",
-    "onangni sik", "onangdi sik", "onangni s", "onangni ami",
-    "haromi", "itvachcha", "molcha", "chmo", "sukaa",
-    "blyat", "blyad", "nahuy", "huy", "pizda", "yeblet", "mudak",
-    "shlyuxa", "pozor", "geyporn"
+    # O'zbekcha haqorat va so'kinishlar
+    "jalap", "jallap", "jalab", "jaloq", "zhalap", "zhallap", "jalabmisan", "jalapsan",
+    "dalbayob", "dalbayop", "dalbaeb", "dolbayob", "dolbayop", "dolbaeb", "dalboyob", "dolboyob",
+    "siktir", "siktirish", "sikey", "sikay", "sikaman", "sikayotgan", "sikish", "sikiw",
+    "siqay", "siqaman", "siqish", "skaman", "skay", "sktir", "siqtr", "siqqan", "sike",
+    "qotoq", "qo'toq", "qotoqmisan", "qotoqbosh", "qotoqvoy", "qotaq", "qo'taq", "qotoqqa", "qotog'im",
+    "amcha", "amvachcha", "amiga", "aminga", "ominga", "omcha", "aming", "oming",
+    "onangni sik", "onangdi sik", "onangni s", "onangni ami", "onangni amiga", "onangning ami",
+    "oneni sik", "enengni sik", "enasini sik", "onangizni sik", "onangni sikey",
+    "gandon", "gondon", "gandonsan", "gandonmisan",
+    "pidar", "pidaraz", "pidaras", "pederast", "pidarsan",
+    "haromi", "haromzoda", "itvachcha", "it emgan", "itdan tarqagan",
+    "ko't", "kot", "kotvachcha", "ko'tvachcha", "kotqoqi", "kotmisan", "kotsan", "ko'tsan",
+    "chmo", "chmoshnik", "manqurt", "padla",
+
+    # Ruscha haqorat va so'kinishlar (Markaziy Osiyo guruhlarida keng tarqalgan)
+    "blyat", "blya", "blyad", "bliad", "blet",
+    "nahuy", "nahui", "naxuy", "naxui", "poxuy", "poxui", "haxuy",
+    "xuy", "huy", "xui", "hui", "huylo", "xuylo", "xuyna", "huyna",
+    "axuel", "oxuel", "axuet", "oxuet", "oxuenniy",
+    "pizda", "pizdets", "pizdecs", "pizdec", "pizdato", "pizdish", "pizdyuk", "pizdet",
+    "ebat", "ebal", "ebik", "eban", "ebanat", "ebaniy", "ebanoe", "ebanniy",
+    "zaebal", "zaebis", "doebalsya", "proebal", "uebishe", "uebok", "yobaniy", "yobnutiy",
+    "suka", "cyka", "suki", "suchka", "sukaa", "sukin",
+    "mudak", "mudo", "mudila",
+    "shlyuxa", "shlyuha", "shluxa", "zalupa", "zalupka", "geyporn"
 ]
 
 # Ruxsat etilgan havolalar (agar bo'lsa, bloklanmaydi)

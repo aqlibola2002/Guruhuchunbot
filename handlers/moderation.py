@@ -38,10 +38,20 @@ LINK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Arab, Eron va Xitoy spambot yozuvlarini aniqlash regexi
-ARABIC_ORIENTAL_PATTERN = re.compile(
-    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u4E00-\u9FFF]"
+# Arab, Xitoy, Yapon, Kores va boshqa chet el spambot yozuvlarini 100% aniqlash regexi
+ORIENTAL_FOREIGN_PATTERN = re.compile(
+    r"["
+    r"\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF"  # Arabcha, Forscha, Pushtu, Urdu
+    r"\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF"                            # Xitoycha (Hanzi / Kanji)
+    r"\u3040-\u309F\u30A0-\u30FF\u31F0-\u31FF\u3000-\u303F"              # Yaponcha (Hiragana, Katakana, Yapon belgilari)
+    r"\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F"                            # Korescha (Hangul bo'g'inlari va jamo)
+    r"\u0900-\u097F\u0980-\u09FF\u0B80-\u0BFF\u0C00-\u0C7F"              # Hindcha (Devanagari, Bengali, Tamil, Telugu)
+    r"\u0E00-\u0E7F"                                                      # Taycha (Thai)
+    r"\u0590-\u05FF"                                                      # Yahudiycha (Hebrew)
+    r"]"
 )
+ARABIC_ORIENTAL_PATTERN = ORIENTAL_FOREIGN_PATTERN
+
 
 # Flood nazorati uchun kesh: {(chat_id, user_id): [timestamps]}
 FLOOD_CACHE: dict[tuple[int, int], list[float]] = {}
@@ -65,10 +75,13 @@ def is_flooding(chat_id: int, user_id: int) -> bool:
 
 
 def contains_arabic_or_oriental(text: str) -> bool:
-    """Matnda arab, fors yoki sharqiy spambot belgilari borligini aniqlash."""
+    """Matnda arab, xitoy, yapon, kores yoki boshqa chet el spambot belgilari borligini aniqlash."""
     if not text:
         return False
-    return bool(ARABIC_ORIENTAL_PATTERN.search(text))
+    return bool(ORIENTAL_FOREIGN_PATTERN.search(text))
+
+
+contains_foreign_oriental_script = contains_arabic_or_oriental
 
 
 def safe_mention(full_name: str | None, user_id: int | None) -> str:
@@ -156,24 +169,63 @@ async def auto_delete_notification(msg: Message, delay: int = AUTO_DELETE_NOTIFI
         pass
 
 
+def normalize_text_for_profanity(text: str) -> tuple[str, set[str], str]:
+    """
+    Matnni so'kinishlarni aniqlash uchun tozalash va leet-kodlarni o'girish.
+    Qaytaradi: (t_unified, words_set, compact_no_spaces)
+    """
+    if not text:
+        return "", set(), ""
+    t = text.lower()
+
+    # Leetspeak va raqamli niqoblarni harflarga o'girish
+    leet_map = {
+        "@": "a", "4": "a", "0": "o", "1": "i", "!": "i", "|": "i",
+        "3": "e", "$": "s", "5": "s", "7": "t",
+    }
+    for char, rep in leet_map.items():
+        t = t.replace(char, rep)
+
+    # Ruscha va lotin o'xshash harflarni unifikatsiya qilish
+    trans = str.maketrans({
+        "а": "a", "в": "v", "е": "e", "к": "k", "м": "m", "н": "h",
+        "о": "o", "р": "r", "с": "s", "т": "t", "у": "u", "х": "x",
+    })
+    t_unified = t.translate(trans)
+
+    # Belgilar va tinish belgilarini bo'shliqqa aylantirish
+    cleaned = re.sub(r"[^\w\s]", " ", t_unified)
+    words = set(cleaned.split())
+
+    # Barcha tinish belgilari va bo'shliqlardan tozalangan ixcham matn (masalan: s.i.k.a.y -> sikay)
+    compact = re.sub(r"[^\w]", "", t_unified)
+
+    return t_unified, words, compact
+
+
 def contains_profanity(text: str) -> bool:
-    """Xabar matnida haqorat va so'kinish so'zlari bor-yo'qligini aniqlash."""
+    """Xabar matnida haqorat va so'kinish so'zlari bor-yo'qligini 100% aniqlash."""
     if not text:
         return False
-    lower_text = text.lower()
-    # Nuqta, tire, yulduzcha va belgilarni bo'shliqqa aylantirish
-    normalized = re.sub(r"[^\w\s]", " ", lower_text)
-    words = set(normalized.split())
-    no_spaces = re.sub(r"\s+", "", lower_text)
+
+    t_unified, words, compact = normalize_text_for_profanity(text)
 
     for kw in PROFANITY_KEYWORDS:
-        kw_lower = kw.lower()
-        if " " in kw_lower:
-            if kw_lower in lower_text:
+        kw_clean = kw.lower().strip()
+        if not kw_clean:
+            continue
+
+        if " " in kw_clean:
+            kw_compact = kw_clean.replace(" ", "")
+            if kw_clean in t_unified or kw_compact in compact:
                 return True
         else:
-            if kw_lower in words or kw_lower in no_spaces:
-                return True
+            if len(kw_clean) <= 3:
+                if kw_clean in words:
+                    return True
+            else:
+                if kw_clean in words or kw_clean in compact:
+                    return True
     return False
 
 
@@ -598,10 +650,15 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             asyncio.create_task(auto_delete_notification(notify))
             return
 
-    # 🈲 2.3 Anti-Arabic / Anti-Raid (Arab va sharqiy spambotlar filtri)
+    # 🈲 2.3 Anti-Foreign Oriental (Arab, Xitoy, Yapon, Kores va boshqa yot yozuvlar filtri)
     text_to_check = message.text or message.caption or ""
     user_name_to_check = message.from_user.full_name if message.from_user else ""
-    if group.get("anti_arabic_enabled", 0) == 1 and (contains_arabic_or_oriental(text_to_check) or contains_arabic_or_oriental(user_name_to_check)):
+    sender_chat_title = message.sender_chat.title if message.sender_chat else ""
+    if group.get("anti_arabic_enabled", 1) == 1 and (
+        contains_foreign_oriental_script(text_to_check)
+        or contains_foreign_oriental_script(user_name_to_check)
+        or contains_foreign_oriental_script(sender_chat_title)
+    ):
         mention = safe_mention(message.from_user.full_name, message.from_user.id) if message.from_user else "Spambot"
         if bot_can_delete_msg:
             try:
@@ -611,13 +668,14 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             notify = await bot.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"🈲 **ANTI-RAID / SPAMBOT FILTRI** 🈲\n"
+                    f"🈲 **CHET EL (ARAB / XITOY / YAPON / KORES) SPAMBOT FILTRI** 🚫\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"🚫 {mention}, guruhda arab/fors/xitoy yozuvlari bilan xabar yozish taqiqlangan!"
+                    f"🚫 {mention}, guruhda arabcha, xitoycha, yaponcha, korescha yoki boshqa yot yozuvlarda yozish qat'iyan taqiqlangan!\n"
+                    f"⚡️ Xabar guruh tozaligini ta'minlash maqsadida o'chirildi."
                 ),
                 parse_mode="Markdown",
             )
-            asyncio.create_task(auto_delete_notification(notify))
+            asyncio.create_task(auto_delete_notification(notify, 60))
             return
 
     # 2.4 Mass-Mention (Ommaviy @Tag spam hujumi filtri)
