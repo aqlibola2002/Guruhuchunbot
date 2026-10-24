@@ -677,6 +677,19 @@ def get_cleaner_keyboard(group: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
+def make_progress_bar(percent: int, length: int = 10) -> str:
+    """1 dan 100 gacha foizga mos zamonaviy va chiroyli progress bar chizadi."""
+    percent = max(0, min(100, int(percent)))
+    if percent <= 0:
+        filled = 0
+    elif percent >= 100:
+        filled = length
+    else:
+        raw = int(round((percent / 100.0) * length))
+        filled = max(1, min(length - 1, raw))
+    return "▰" * filled + "▱" * (length - filled)
+
+
 # ── /tozala [Guruhni tozalash: chiroyli progress bar va boshqaruv] ──────
 @router.message(Command("tozala", "tozalash", "clear", ignore_case=True))
 async def cmd_clear(message: Message, bot: Bot) -> None:
@@ -709,18 +722,26 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
 
         limit = custom_count if custom_count else 100
 
-        # Animatsion progress xabari
-        prog_msg = await bot.send_message(
-            chat_id=message.chat.id,
-            text=(
-                f"👥 **GURUH tozalanmoqda...**\n\n"
-                f"⏳ (taxminan 3 soniya)\n\n"
-                f"🗑 **A'zo xabarlari:**  ▓▓▓▓▓▓▓▓░░ 80%\n"
-                f"🚫 **Reklama, Link:**   ▓▓▓▓▓▓▓░░░ 75%\n"
-                f"⚠️ **Nojo'ya so'z:**     ▓▓▓▓▓▓▓▓░░ 85%"
-            ),
-            parse_mode="Markdown",
+        initial_text = (
+            f"🧹 **A'ZO XABARLARI TOZALANMOQDA...**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **A'zo:** [{target_name}](tg://user?id={target_id})\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🗑 **A'zo xabarlari:** {make_progress_bar(15)} 15% ⏳\n"
+            f"🚫 **Reklama, Link:**  {make_progress_bar(10)} 10% ⏳\n"
+            f"⚠️ **Nojo'ya so'z:**   {make_progress_bar(18)} 18% ⏳\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔍 Xabarlar tahlil qilinmoqda (15%)..."
         )
+
+        try:
+            prog_msg = await bot.send_message(
+                chat_id=message.chat.id,
+                text=initial_text,
+                parse_mode="Markdown",
+            )
+        except Exception:
+            return
 
         msg_ids = set()
         msg_ids.add(message.reply_to_message.message_id)
@@ -728,26 +749,78 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
             saved_ids = await db.get_user_chat_messages(message.chat.id, target_id, limit=limit)
             msg_ids.update(saved_ids)
 
-        await asyncio.sleep(1.0)
-        deleted = await delete_in_batches(bot, message.chat.id, list(msg_ids))
-        if target_id:
-            await db.delete_saved_chat_messages(message.chat.id, list(msg_ids))
+        steps = [
+            (
+                (48, 42, 52),
+                "⚡️ Xabarlar saralanmoqda (48%)...",
+            ),
+            (
+                (82, 78, 85),
+                "🧹 Xabarlar guruhdan o'chirilmoqda (82%)...",
+            ),
+            (
+                (96, 93, 97),
+                "✨ Guruh tozalanib, yakunlanmoqda (96%)...",
+            ),
+        ]
+
+        deleted = 0
+        delete_executed = False
+
+        for (azo_p, rek_p, noj_p), status_text in steps:
+            await asyncio.sleep(0.35)
+
+            if azo_p >= 75 and not delete_executed:
+                deleted = await delete_in_batches(bot, message.chat.id, list(msg_ids))
+                if target_id:
+                    await db.delete_saved_chat_messages(message.chat.id, list(msg_ids))
+                delete_executed = True
+
+            stage_text = (
+                f"🧹 **A'ZO XABARLARI TOZALANMOQDA...**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **A'zo:** [{target_name}](tg://user?id={target_id})\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🗑 **A'zo xabarlari:** {make_progress_bar(azo_p)} {azo_p}% 🔄\n"
+                f"🚫 **Reklama, Link:**  {make_progress_bar(rek_p)} {rek_p}% 🔄\n"
+                f"⚠️ **Nojo'ya so'z:**   {make_progress_bar(noj_p)} {noj_p}% 🔄\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"{status_text}"
+            )
+            try:
+                await prog_msg.edit_text(stage_text, parse_mode="Markdown")
+            except Exception:
+                pass
+
+        if not delete_executed:
+            deleted = await delete_in_batches(bot, message.chat.id, list(msg_ids))
+            if target_id:
+                await db.delete_saved_chat_messages(message.chat.id, list(msg_ids))
+
+        await asyncio.sleep(0.35)
 
         final_text = (
-            f"✨ **GURUH MUVAFFAQIYATLI TOZALANDI!** 🧹\n\n"
-            f"👤 **A'zo:** [{target_name}](tg://user?id={target_id})\n\n"
-            f"🗑 **A'zo xabarlari:**  ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
-            f"🚫 **Reklama, Link:**   ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
-            f"⚠️ **Nojo'ya so'z:**     ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
+            f"✨ **GURUH MUVAFFAQIYATLI TOZALANDI!** 🧹\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **A'zo:** [{target_name}](tg://user?id={target_id})\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🗑 **A'zo xabarlari:** {make_progress_bar(100)} 100% ✅\n"
+            f"🚫 **Reklama, Link:**  {make_progress_bar(100)} 100% ✅\n"
+            f"⚠️ **Nojo'ya so'z:**   {make_progress_bar(100)} 100% ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"📊 Jami **{deleted} ta xabar** tozalandi!\n"
-            f"👮‍♂️ Admin: {get_admin_name(message)}"
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}\n"
+            f"⚡️ **Holati:** Foydalanuvchi xabarlari to'liq tozalandi!"
         )
         try:
             await prog_msg.edit_text(final_text, parse_mode="Markdown")
         except Exception:
-            prog_msg = await bot.send_message(chat_id=message.chat.id, text=final_text, parse_mode="Markdown")
+            try:
+                prog_msg = await bot.send_message(chat_id=message.chat.id, text=final_text, parse_mode="Markdown")
+            except Exception:
+                pass
 
-        asyncio.create_task(auto_delete_message(prog_msg, AUTO_DELETE_NOTIFICATION_DELAY))
+        asyncio.create_task(auto_delete_message(prog_msg, 6))
         return
 
     # 2. AGAR PARAMETRSIZ YOZILSA — STANDART OXIRGI 30 TA XABARNI TOZALASH
@@ -782,42 +855,98 @@ async def cmd_cleaner_panel(message: Message, bot: Bot) -> None:
 
 
 async def run_animated_cleanup(bot: Bot, chat_id: int, current_msg_id: int, count: int, admin_name: str) -> None:
+    # 1. Boshlang'ich tekshiruv (10-15%)
     step1_text = (
-        f"🧹 **Guruh xabarlari tozalanmoqda...**\n\n"
-        f"⏳ Oxirgi **{count} ta** xabar tekshirilmoqda va o'chirilmoqda...\n\n"
-        f"🗑 **Kirdi-Chiqdi:**  ▓▓▓▓▓▓▓▓░░ 85%\n"
-        f"🚫 **Reklama, Link:** ▓▓▓▓▓▓▓░░░ 75%\n"
-        f"⚠️ **Nojo'ya so'z:**   ▓▓▓▓▓▓▓▓░░ 85%\n"
-        f"🦠 **Zararli fayllar:** ▓▓▓▓▓▓▓▓▓░ 95%"
+        f"🧹 **GURUH TOZALANMOQDA...**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🗑 **Kirdi-Chiqdi:**  {make_progress_bar(14)} 14% ⏳\n"
+        f"🚫 **Reklama, Link:** {make_progress_bar(10)} 10% ⏳\n"
+        f"⚠️ **Nojo'ya so'z:**   {make_progress_bar(18)} 18% ⏳\n"
+        f"🦠 **Zararli fayllar:** {make_progress_bar(8)}  8% ⏳\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔍 Xabarlar tahlil qilinmoqda (15%)..."
     )
-    msg = await bot.send_message(chat_id=chat_id, text=step1_text, parse_mode="Markdown")
+    try:
+        msg = await bot.send_message(chat_id=chat_id, text=step1_text, parse_mode="Markdown")
+    except Exception:
+        return
 
-    # Bazada qayd etilgan ID lar va ketma-ket ID larni to'plash
+    # O'chirilishi kerak bo'lgan xabarlar ID sini yig'ish
     db_ids = await db.get_recent_chat_message_ids(chat_id, limit=count)
     seq_ids = [current_msg_id - i for i in range(1, count + 1) if current_msg_id - i > 0]
     all_msg_ids = list(set(db_ids + seq_ids))
 
-    await asyncio.sleep(0.8)
+    # Dinamik qadamlar ro'yxati (foizlar 1 dan 100 gacha tezlik bilan o'sib boradi)
+    steps = [
+        (
+            (46, 38, 52, 41),
+            "⚡️ Keraksiz xabarlar ajratilmoqda (45%)...",
+        ),
+        (
+            (76, 72, 81, 74),
+            "🧹 Xabarlar guruhdan o'chirilmoqda (75%)...",
+        ),
+        (
+            (96, 92, 97, 94),
+            "✨ Guruh tozalanib, yakunlanmoqda (95%)...",
+        ),
+    ]
 
-    deleted = await delete_in_batches(bot, chat_id, all_msg_ids)
-    await db.delete_saved_chat_messages(chat_id, all_msg_ids)
+    deleted = 0
+    delete_executed = False
 
+    for (kc_p, rek_p, noj_p, zar_p), status_text in steps:
+        await asyncio.sleep(0.35)
+
+        # 75% qadamida xabarlarni o'chirishni bajaramiz
+        if kc_p >= 70 and not delete_executed:
+            deleted = await delete_in_batches(bot, chat_id, all_msg_ids)
+            await db.delete_saved_chat_messages(chat_id, all_msg_ids)
+            delete_executed = True
+
+        stage_text = (
+            f"🧹 **GURUH TOZALANMOQDA...**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🗑 **Kirdi-Chiqdi:**  {make_progress_bar(kc_p)} {kc_p}% 🔄\n"
+            f"🚫 **Reklama, Link:** {make_progress_bar(rek_p)} {rek_p}% 🔄\n"
+            f"⚠️ **Nojo'ya so'z:**   {make_progress_bar(noj_p)} {noj_p}% 🔄\n"
+            f"🦠 **Zararli fayllar:** {make_progress_bar(zar_p)} {zar_p}% 🔄\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{status_text}"
+        )
+        try:
+            await msg.edit_text(stage_text, parse_mode="Markdown")
+        except Exception:
+            pass
+
+    if not delete_executed:
+        deleted = await delete_in_batches(bot, chat_id, all_msg_ids)
+        await db.delete_saved_chat_messages(chat_id, all_msg_ids)
+
+    await asyncio.sleep(0.35)
+
+    # Yakuniy 100% lik hisobot
     final_text = (
-        f"✨ **GURUH MUVAFFAQIYATLI TOZALANDI!** 🧹\n\n"
-        f"🗑 **Kirdi-Chiqdi:**  ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
-        f"🚫 **Reklama, Link:** ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
-        f"⚠️ **Nojo'ya so'z:**   ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n"
-        f"🦠 **Zararli fayllar:** ▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
+        f"✨ **GURUH MUVAFFAQIYATLI TOZALANDI!** 🧹\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🗑 **Kirdi-Chiqdi:**  {make_progress_bar(100)} 100% ✅\n"
+        f"🚫 **Reklama, Link:** {make_progress_bar(100)} 100% ✅\n"
+        f"⚠️ **Nojo'ya so'z:**   {make_progress_bar(100)} 100% ✅\n"
+        f"🦠 **Zararli fayllar:** {make_progress_bar(100)} 100% ✅\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 **Haqiqatda o'chirilgan xabarlar:** **{deleted}** ta\n"
-        f"👮‍♂️ **Admin:** {admin_name}"
+        f"👮‍♂️ **Admin:** {admin_name}\n"
+        f"⚡️ **Holati:** Guruh xavfsiz va toza!"
     )
-
     try:
         await msg.edit_text(final_text, parse_mode="Markdown")
     except Exception:
-        pass
+        try:
+            msg = await bot.send_message(chat_id=chat_id, text=final_text, parse_mode="Markdown")
+        except Exception:
+            pass
 
-    # Muvaffaqiyat bildirishnomasi 6 soniyadan so'ng avtomatik tozalanadi
+    # Xabar 6 soniyadan so'ng avtomatik o'chiriladi
     asyncio.create_task(auto_delete_message(msg, 6))
 
 
