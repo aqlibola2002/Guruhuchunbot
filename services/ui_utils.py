@@ -23,6 +23,22 @@ def make_progress_bar(percent: int | float, length: int = 10) -> str:
     return "▰" * filled + "▱" * (length - filled)
 
 
+def get_level_title(level: int) -> str:
+    """Foydalanuvchi darajasiga mos premium unvonni aniqlash."""
+    if level < 5:
+        return "🥉 Yangi a'zo"
+    elif level < 10:
+        return "🥈 Faol suhbatdosh"
+    elif level < 20:
+        return "🥇 Guruh yulduzi"
+    elif level < 35:
+        return "💎 Guruh faxri"
+    elif level < 50:
+        return "👑 Guruh yetakchisi"
+    else:
+        return "⚡️ AFSONAVIY A'ZO"
+
+
 # Foydalanuvchilarga yuborilgan taklif talabi ogohlantirish xabarlari:
 # (chat_id, user_id) -> set[message_id]
 USER_INVITE_WARN_MSGS: dict[tuple[int, int], set[int]] = {}

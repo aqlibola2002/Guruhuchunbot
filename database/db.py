@@ -209,6 +209,26 @@ class Database:
                 await conn.execute("UPDATE groups SET invites_enabled = 1 WHERE invites_enabled IS NULL")
             except Exception:
                 pass
+            try:
+                await conn.execute("ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE users ADD COLUMN level INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE users ADD COLUMN reputation INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE users ADD COLUMN last_daily TEXT DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN captcha_enabled INTEGER DEFAULT 0")
+            except Exception:
+                pass
             await conn.commit()
 
     # ── Guruh sozlamalari ─────────────────────────────────────────────
@@ -413,12 +433,14 @@ class Database:
             # Foydalanuvchi xabarlarini oshirish
             await conn.execute(
                 """
-                INSERT INTO users (user_id, chat_id, full_name, username, message_count, last_seen)
-                VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                INSERT INTO users (user_id, chat_id, full_name, username, message_count, xp, level, last_seen)
+                VALUES (?, ?, ?, ?, 1, 5, 1, CURRENT_TIMESTAMP)
                 ON CONFLICT(user_id, chat_id) DO UPDATE SET
                     full_name = excluded.full_name,
                     username = excluded.username,
                     message_count = users.message_count + 1,
+                    xp = COALESCE(users.xp, 0) + 5,
+                    level = MAX(1, ((COALESCE(users.xp, 0) + 5) / 100) + 1),
                     last_seen = CURRENT_TIMESTAMP
                 """,
                 (user_id, chat_id, full_name, username or ""),
@@ -532,6 +554,132 @@ class Database:
                 row = await cursor.fetchone()
             return dict(row) if row else None
 
+    # ── Gamifikatsiya: Profil, Darajalar, XP va Reputatsiya ───────────
+    async def get_user_profile(self, chat_id: int, user_id: int) -> dict[str, Any]:
+        """Foydalanuvchining to'liq profil kartasini (XP, Level, Reputatsiya, Invites, Rank) olish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT * FROM users WHERE chat_id = ? AND user_id = ?",
+                (chat_id, user_id),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return {}
+
+            user_data = dict(row)
+
+            # Invites soni
+            inv_cursor = await conn.execute(
+                "SELECT COUNT(*) FROM user_invites WHERE chat_id = ? AND inviter_id = ?",
+                (chat_id, user_id),
+            )
+            inv_row = await inv_cursor.fetchone()
+            user_data["invites_count"] = inv_row[0] if inv_row else 0
+
+            # Guruhdagi XP bo'yicha o'rni (Rank)
+            rank_cursor = await conn.execute(
+                "SELECT COUNT(*) FROM users WHERE chat_id = ? AND xp > ?",
+                (chat_id, user_data.get("xp", 0)),
+            )
+            rank_row = await rank_cursor.fetchone()
+            user_data["rank"] = (rank_row[0] + 1) if rank_row else 1
+
+            return user_data
+
+    async def claim_daily_xp(self, chat_id: int, user_id: int) -> tuple[bool, int, str]:
+        """Har 24 soatda bir marta kunlik bonus XP berish."""
+        import random
+        today = datetime.date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT last_daily, xp FROM users WHERE chat_id = ? AND user_id = ?",
+                (chat_id, user_id),
+            )
+            row = await cursor.fetchone()
+            if row and row["last_daily"] == today:
+                return False, 0, "Siz bugungi kunlik bonusingizni allaqachon olgansiz! Ertaga yana urinib ko'ring."
+
+            bonus_xp = random.randint(50, 100)
+            await conn.execute(
+                """
+                INSERT INTO users (user_id, chat_id, xp, level, last_daily)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, chat_id) DO UPDATE SET
+                    xp = COALESCE(users.xp, 0) + ?,
+                    level = MAX(1, ((COALESCE(users.xp, 0) + ?) / 100) + 1),
+                    last_daily = ?
+                """,
+                (user_id, chat_id, bonus_xp, max(1, (bonus_xp // 100) + 1), today, bonus_xp, bonus_xp, today),
+            )
+            await conn.commit()
+            return True, bonus_xp, ""
+
+    async def add_user_reputation(self, chat_id: int, user_id: int, amount: int = 1) -> int:
+        """Foydalanuvchiga minnatdorchilik / reputatsiya balli qo'shish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            await conn.execute(
+                """
+                INSERT INTO users (user_id, chat_id, reputation)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, chat_id) DO UPDATE SET
+                    reputation = COALESCE(users.reputation, 0) + ?
+                """,
+                (user_id, chat_id, amount, amount),
+            )
+            await conn.commit()
+            cursor = await conn.execute(
+                "SELECT reputation FROM users WHERE chat_id = ? AND user_id = ?",
+                (chat_id, user_id),
+            )
+            row = await cursor.fetchone()
+            return row["reputation"] if row else amount
+
+    async def get_top_levels(self, chat_id: int, limit: int = 10) -> list[dict[str, Any]]:
+        """Guruhdagi eng yuqori daraja (Level va XP) ga ega bo'lgan faollar ro'yxati."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                """
+                SELECT user_id, full_name, username, xp, level, reputation, message_count
+                FROM users
+                WHERE chat_id = ? AND (xp > 0 OR message_count > 0)
+                ORDER BY xp DESC, message_count DESC
+                LIMIT ?
+                """,
+                (chat_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_random_active_user(self, chat_id: int) -> dict[str, Any] | None:
+        """Konkurs va giveaway lar uchun guruhdagi faol a'zolar orasidan tasodifiy 1 kishini tanlash."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                """
+                SELECT user_id, full_name, username, message_count
+                FROM users
+                WHERE chat_id = ? AND message_count > 0
+                ORDER BY RANDOM()
+                LIMIT 1
+                """,
+                (chat_id,),
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def set_captcha_setting(self, chat_id: int, enabled: int) -> None:
+        """Anti-Bot Captcha himoyasini yoqish/o'chirish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE groups SET captcha_enabled = ? WHERE chat_id = ?",
+                (enabled, chat_id),
+            )
+            await conn.commit()
+
     async def get_user_by_id(self, chat_id: int, user_id: int) -> dict[str, Any] | None:
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
@@ -574,13 +722,23 @@ class Database:
             if inviter_name:
                 await conn.execute(
                     """
-                    INSERT INTO users (user_id, chat_id, full_name, username)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO users (user_id, chat_id, full_name, username, xp, level)
+                    VALUES (?, ?, ?, ?, ?, 1)
                     ON CONFLICT(user_id, chat_id) DO UPDATE SET
                         full_name = excluded.full_name,
-                        username = excluded.username
+                        username = excluded.username,
+                        xp = COALESCE(users.xp, 0) + ?,
+                        level = MAX(1, ((COALESCE(users.xp, 0) + ?) / 100) + 1)
                     """,
-                    (inviter_id, chat_id, inviter_name, inviter_username or ""),
+                    (
+                        inviter_id,
+                        chat_id,
+                        inviter_name,
+                        inviter_username or "",
+                        50 if is_new else 0,
+                        50 if is_new else 0,
+                        50 if is_new else 0,
+                    ),
                 )
 
             cursor = await conn.execute(

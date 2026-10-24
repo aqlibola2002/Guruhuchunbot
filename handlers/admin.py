@@ -1150,6 +1150,12 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                text=f"🤖 Anti-Bot Captcha: {mark(group.get('captcha_enabled', 0))}",
+                callback_data="toggle_captcha",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text=f"⏰ Rejali xabarlar: {mark(group.get('scheduled_enabled', 1))}",
                 callback_data="toggle_scheduled",
             )
@@ -1211,7 +1217,7 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
         elif raw == "auto_approve":
             setting_key = "auto_approve_joins"
             current_val = group.get(setting_key, 1)
-        elif raw in ("night_mode", "anti_flood", "anti_arabic"):
+        elif raw in ("night_mode", "anti_flood", "anti_arabic", "captcha"):
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 0 if raw != "anti_flood" else 1)
         else:
@@ -1781,6 +1787,70 @@ async def cmd_warns_status(message: Message, bot: Bot) -> None:
         f"⚠️ **Ogohlantirishlar soni:** **{warn_cnt} / {MAX_WARNS} ta**",
         parse_mode="Markdown",
     )
+
+
+# ── /sekin [soniya|off] (Sekin rejim / Slowmode) ───────────────────
+@router.message(Command("sekin", "slowmode", "sekinlik", ignore_case=True))
+async def cmd_slowmode(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2:
+        await message.reply(
+            "⏳ **Guruhda sekin rejim (Slowmode) o'rnatish:**\n\n"
+            "Foydalanish:\n"
+            "• `/sekin 10` — har bir xabar oralig'i 10 soniya\n"
+            "• `/sekin 30` — 30 soniya kutish\n"
+            "• `/sekin 60` — 1 daqiqa kutish\n"
+            "• `/sekin 300` — 5 daqiqa kutish\n"
+            "• `/sekin off` yoki `/sekin 0` — sekin rejimni o'chirish\n\n"
+            "💡 *Sekin rejim a'zolarning tez-tez ketma-ket spam yozishini Telegram darajasida to'xtatadi.*",
+            parse_mode="Markdown",
+        )
+        return
+
+    val_str = parts[1].strip().lower().replace("s", "").replace("soniya", "")
+    if val_str in ("off", "0", "ochir", "stop"):
+        seconds = 0
+    elif val_str.isdigit():
+        seconds = int(val_str)
+        allowed = [0, 10, 30, 60, 300, 900, 3600]
+        closest = min(allowed, key=lambda x: abs(x - seconds))
+        seconds = closest
+    else:
+        await message.reply("⚠️ Noto'g'ri vaqt kiritildi. Masalan: `/sekin 10` yoki `/sekin off`", parse_mode="Markdown")
+        return
+
+    try:
+        await bot.set_chat_slow_mode_delay(chat_id=message.chat.id, slow_mode_delay=seconds)
+        if seconds == 0:
+            await message.reply(
+                f"🔓 **SEKIN REJIM O'CHIRILDI!**\n\n"
+                f"✅ Guruh a'zolari endi odatdagi tartibda erkin yoza oladi.\n\n"
+                f"👮‍♂️ Admin: {get_admin_name(message)}",
+                parse_mode="Markdown",
+            )
+        else:
+            await message.reply(
+                f"⏳ **SEKIN REJIM O'RNATILDI!**\n\n"
+                f"⏱ Xabarlar oralig'i: **{seconds} soniya** etib belgilandi.\n\n"
+                f"👮‍♂️ Admin: {get_admin_name(message)}",
+                parse_mode="Markdown",
+            )
+    except Exception as e:
+        await message.reply(
+            f"❌ Sekin rejimni o'rnatib bo'lmadi: `{e}`\n\n"
+            f"💡 **Eslatma:** Bot guruhda Administrator bo'lishi va unga to'liq boshqaruv huquqlari berilgan bo'lishi kerak.",
+            parse_mode="Markdown",
+        )
+
 
 
 
