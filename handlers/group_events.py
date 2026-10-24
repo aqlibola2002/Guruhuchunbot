@@ -290,53 +290,6 @@ async def send_welcome_message(bot: Bot, chat_id: int, chat_title: str, new_user
     asyncio.create_task(auto_delete_msg(welcome_msg, 60))
 
 
-CAPTCHA_CACHE: dict[tuple[int, int], float] = {}
-
-
-async def send_captcha_if_needed(bot: Bot, chat_id: int, new_user: User, group: dict) -> None:
-    """Anti-Bot Captcha yoqilgan bo'lsa yangi a'zodan tasdiq talab qilish."""
-    if group.get("captcha_enabled", 0) != 1 or new_user.is_bot:
-        return
-
-    now_t = asyncio.get_event_loop().time()
-    c_key = (chat_id, new_user.id)
-    if now_t - CAPTCHA_CACHE.get(c_key, 0.0) < 10.0:
-        return
-    CAPTCHA_CACHE[c_key] = now_t
-
-    try:
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=new_user.id,
-            permissions=ChatPermissions(can_send_messages=False),
-        )
-        captcha_kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✅ Men robot emasman",
-                        callback_data=f"verify_captcha:{new_user.id}",
-                    )
-                ]
-            ]
-        )
-        clean_name = (new_user.full_name or "Foydalanuvchi").replace("*", "").replace("`", "")
-        c_msg = await bot.send_message(
-            chat_id=chat_id,
-            text=(
-                f"🛡 **ANTI-BOT XAVFSIZLIK TIZIMI** 🤖\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👋 Salom, [{clean_name}](tg://user?id={new_user.id})!\n"
-                f"Guruhda xabar yozish uchun 60 soniya ichida quyidagi tugmani bosib, robot emasligingizni tasdiqlang:"
-            ),
-            reply_markup=captcha_kb,
-            parse_mode="Markdown",
-        )
-        asyncio.create_task(auto_delete_msg(c_msg, 60))
-    except Exception:
-        pass
-
-
 # ── Foydalanuvchilar qo'shilganda yoki kirganda (chat_member yangilanishi) ──
 @router.chat_member()
 async def on_user_chat_member_updated(event: ChatMemberUpdated, bot: Bot) -> None:
@@ -387,9 +340,6 @@ async def on_user_chat_member_updated(event: ChatMemberUpdated, bot: Bot) -> Non
             new_user=new_user,
             group=group,
         )
-
-        # 3. Agar Anti-Bot Captcha yoqilgan bo'lsa
-        await send_captcha_if_needed(bot, event.chat.id, new_user, group)
 
 
 # ── Yangi a'zolar qo'shilganda (Message xizmati orqali) ──────────────
@@ -442,49 +392,6 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
             new_user=new_user,
             group=group,
         )
-
-        await send_captcha_if_needed(bot, message.chat.id, new_user, group)
-
-
-@router.callback_query(F.data.startswith("verify_captcha:"))
-async def cb_verify_captcha(call: CallbackQuery, bot: Bot) -> None:
-    parts = call.data.split(":")
-    if len(parts) < 2:
-        return
-    try:
-        target_id = int(parts[1])
-    except Exception:
-        return
-
-    if call.from_user.id != target_id:
-        await call.answer("❌ Bu tasdiqlash tugmasi siz uchun emas!", show_alert=True)
-        return
-
-    try:
-        await bot.restrict_chat_member(
-            chat_id=call.message.chat.id,
-            user_id=call.from_user.id,
-            permissions=ChatPermissions(
-                can_send_messages=True,
-                can_send_media_messages=True,
-                can_send_polls=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True,
-            ),
-        )
-    except Exception:
-        pass
-
-    await call.answer("Muvaffaqiyatli tasdiqlandi! ✅", show_alert=False)
-    try:
-        await call.message.edit_text(
-            f"✅ **Shaxsingiz muvaffaqiyatli tasdiqlandi!** 🎉\n\n"
-            f"Xush kelibsiz, [{call.from_user.full_name}](tg://user?id={call.from_user.id})! Endi bemalol yozishingiz mumkin.",
-            parse_mode="Markdown",
-        )
-        asyncio.create_task(auto_delete_msg(call.message, 15))
-    except Exception:
-        pass
 
 
 # ── Foydalanuvchi guruhdan chiqqanda (Chiqdi) va barcha xizmat xabarlari ──

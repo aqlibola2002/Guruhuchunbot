@@ -1150,12 +1150,6 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text=f"🤖 Anti-Bot Captcha: {mark(group.get('captcha_enabled', 0))}",
-                callback_data="toggle_captcha",
-            )
-        ],
-        [
-            InlineKeyboardButton(
                 text=f"⏰ Rejali xabarlar: {mark(group.get('scheduled_enabled', 1))}",
                 callback_data="toggle_scheduled",
             )
@@ -1217,7 +1211,7 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
         elif raw == "auto_approve":
             setting_key = "auto_approve_joins"
             current_val = group.get(setting_key, 1)
-        elif raw in ("night_mode", "anti_flood", "anti_arabic", "captcha"):
+        elif raw in ("night_mode", "anti_flood", "anti_arabic"):
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 0 if raw != "anti_flood" else 1)
         else:
@@ -1850,6 +1844,285 @@ async def cmd_slowmode(message: Message, bot: Bot) -> None:
             f"💡 **Eslatma:** Bot guruhda Administrator bo'lishi va unga to'liq boshqaruv huquqlari berilgan bo'lishi kerak.",
             parse_mode="Markdown",
         )
+
+
+# ── /qulf va /ochish (Favqulodda Guruhni Qulflash va Ochish) ─────────
+@router.message(Command("qulf", "lock", "yopish", ignore_case=True))
+async def cmd_lock_chat(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    try:
+        await bot.set_chat_permissions(
+            chat_id=message.chat.id,
+            permissions=ChatPermissions(
+                can_send_messages=False,
+                can_send_media_messages=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            ),
+        )
+        await message.reply(
+            f"🔒 **GURUH VAQTINCHA QULFLANDI (YOPILDI)!** 🛑\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"⚠️ Guruh ma'muriyati tomonidan oddiy a'zolarga xabar yozish vaqtincha to'xtatildi.\n"
+            f"💡 Faqat administratorlar xabar yoza oladi.\n\n"
+            f"🔓 Qayta ochish uchun: `/ochish`\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await message.reply(
+            f"❌ Guruhni qulflab bo'lmadi: `{e}`\n\n"
+            f"💡 **Eslatma:** Bot guruhda Administrator bo'lishi va unga foydalanuvchilarni cheklash (Restrict members) huquqi berilgan bo'lishi kerak.",
+            parse_mode="Markdown",
+        )
+
+
+@router.message(Command("ochish", "unlock", "och", ignore_case=True))
+async def cmd_unlock_chat(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    try:
+        await bot.set_chat_permissions(
+            chat_id=message.chat.id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+            ),
+        )
+        await message.reply(
+            f"🔓 **GURUH QULFDAN OCHILDI!** ✨\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✅ Barcha guruh a'zolari yana bemalol xabar yozishlari va muloqot qilishlari mumkin!\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await message.reply(
+            f"❌ Guruhni ochib bo'lmadi: `{e}`\n\n"
+            f"💡 **Eslatma:** Bot guruhda Administrator bo'lishi kerak.",
+            parse_mode="Markdown",
+        )
+
+
+# ── /del va /ochir (Reply qilingan xabarni zudlik bilan o'chirish) ─────
+@router.message(Command("del", "ochir", "delete", ignore_case=True))
+async def cmd_delete_single_message(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        return
+
+    if not message.reply_to_message:
+        await message.reply(
+            "⚠️ O'chirmoqchi bo'lgan xabaringizga **Reply** qilib `/del` yoki `/ochir` deb yozing!",
+            parse_mode="Markdown",
+        )
+        return
+
+    target_msg_id = message.reply_to_message.message_id
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=target_msg_id)
+    except Exception:
+        pass
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+
+# ── /tozala [1-100] (Ko'p miqdordagi xabarlarni birdan tozalash) ───────
+@router.message(Command("tozala", "clean", "purge", ignore_case=True))
+async def cmd_bulk_clean_messages(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq guruhlarda adminlar uchun ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split()
+    count = 10
+    if len(parts) >= 2 and parts[1].isdigit():
+        count = max(1, min(100, int(parts[1])))
+    elif len(parts) >= 2 and not parts[1].isdigit():
+        await message.reply(
+            "⚠️ Foydalanish: `/tozala [1-100]`\nMasalan: `/tozala 20` (oxirgi 20 ta xabarni tozalash)",
+            parse_mode="Markdown",
+        )
+        return
+
+    start_id = message.message_id
+    deleted_count = 0
+    for mid in range(start_id, max(1, start_id - count - 1), -1):
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=mid)
+            deleted_count += 1
+        except Exception:
+            pass
+
+    confirm_msg = await bot.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"🧹 **CHAT TOZALANDI!** ✨\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🗑 Oxirgi **{deleted_count} ta** xabar muvaffaqiyatli o'chirildi.\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}"
+        ),
+        parse_mode="Markdown",
+    )
+    asyncio.create_task(auto_delete_message(confirm_msg, 5))
+
+
+# ── Taqiqlangan so'zlar filtri (/sozqoshish, /sozochir, /sozlar, /soztozala) ──
+@router.message(Command("sozqoshish", "soz_qosh", "banword", ignore_case=True))
+async def cmd_add_banned_word(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(
+            "🛑 **Guruhga taqiqlangan so'z qo'shish:**\n\n"
+            "Foydalanish: `/sozqoshish [so'z]`\n"
+            "Masalan: `/sozqoshish qimor`\n\n"
+            "💡 Ushbu so'z yozilgan xabarlar avtomatik o'chiriladi va foydalanuvchiga ogohlantirish beriladi.",
+            parse_mode="Markdown",
+        )
+        return
+
+    word = parts[1].strip().lower()
+    if len(word) < 2:
+        await message.reply("⚠️ So'z kamida 2 ta belgidan iborat bo'lishi kerak!")
+        return
+
+    ok = await db.add_banned_word(message.chat.id, word)
+    if ok:
+        await message.reply(
+            f"✅ **TAQIQLANGAN SO'Z QO'SHILDI!** 🛑\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📝 So'z: **«{word}»**\n"
+            f"🔒 Endi a'zolar bu so'zni yozganda xabarlari avtomatik o'chiriladi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply(f"⚠️ **«{word}»** so'zi allaqachon taqiqlangan so'zlar ro'yxatida bor.")
+
+
+@router.message(Command("sozochir", "soz_ochir", "unbanword", ignore_case=True))
+async def cmd_remove_banned_word(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(
+            "🕊 **Taqiqlangan so'zni olib tashlash:**\n\n"
+            "Foydalanish: `/sozochir [so'z]`\n"
+            "Masalan: `/sozochir qimor`",
+            parse_mode="Markdown",
+        )
+        return
+
+    word = parts[1].strip().lower()
+    removed = await db.remove_banned_word(message.chat.id, word)
+    if removed:
+        await message.reply(
+            f"🕊 **TAQIQLANGAN SO'Z OLIB TASHLANDI!** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📝 So'z: **«{word}»** ro'yxatdan muvaffaqiyatli o'chirildi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply(f"⚠️ **«{word}»** so'zi taqiqlangan so'zlar ro'yxatida topilmadi.")
+
+
+@router.message(Command("sozlar", "taqiqlangan", "bannedwords", ignore_case=True))
+async def cmd_list_banned_words(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    words = await db.get_banned_words(message.chat.id)
+    if not words:
+        await message.reply(
+            "📋 **Guruhda maxsus taqiqlangan so'zlar hali yo'q.**\n\n"
+            "Yangi so'z qo'shish uchun: `/sozqoshish [so'z]` deb yozing.",
+            parse_mode="Markdown",
+        )
+        return
+
+    lines = [f"{idx}. `{w}`" for idx, w in enumerate(words, start=1)]
+    words_text = "\n".join(lines)
+    await message.reply(
+        f"📋 **GURUHDAGI MAXSUS TAQIQLANGAN SO'ZLAR ({len(words)} ta):** 🛑\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"{words_text}\n\n"
+        f"➕ Qo'shish: `/sozqoshish [so'z]`\n"
+        f"➖ O'chirish: `/sozochir [so'z]`\n"
+        f"🧹 Barchasini tozalash: `/soztozala`",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("soztozala", "banned_clear", ignore_case=True))
+async def cmd_clear_banned_words(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    cnt = await db.clear_banned_words(message.chat.id)
+    await message.reply(
+        f"🧹 **Guruhdagi barcha maxsus taqiqlangan so'zlar tozalandi!** ({cnt} ta o'chirildi)\n\n"
+        f"👮‍♂️ Admin: {get_admin_name(message)}",
+        parse_mode="Markdown",
+    )
 
 
 

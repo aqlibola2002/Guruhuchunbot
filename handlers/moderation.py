@@ -771,6 +771,50 @@ async def process_group_message(message: Message, bot: Bot) -> None:
 
     text = message.text or message.caption or ""
 
+    # 5.1 Maxsus taqiqlangan so'zlar filtri (Custom banned words)
+    if text and not user_is_admin:
+        custom_banned = await db.get_banned_words(message.chat.id)
+        if custom_banned:
+            lower_txt = text.lower()
+            matched_word = None
+            for b_word in custom_banned:
+                b_clean = b_word.strip().lower()
+                if b_clean and b_clean in lower_txt:
+                    matched_word = b_word
+                    break
+
+            if matched_word:
+                if bot_can_delete_msg:
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    warn_cnt = await db.add_warn(message.chat.id, message.from_user.id, f"Taqiqlangan so'z: {matched_word}") if message.from_user else 0
+                    mention = safe_mention(message.from_user.full_name, message.from_user.id) if message.from_user else "Foydalanuvchi"
+                    notify = await bot.send_message(
+                        chat_id=message.chat.id,
+                        text=(
+                            f"🛑 **TAQIQLANGAN SO'Z ANIQLANDI** 🛑\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"🚫 {mention}, bu guruhda **«{matched_word}»** so'zini ishlatish adminlar tomonidan taqiqlangan!\n\n"
+                            f"⚠️ Ogohlantirish berildi: **{warn_cnt}/{MAX_WARNS}**\n"
+                            f"💡 Guruh qoidalariga rioya qiling!"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    asyncio.create_task(auto_delete_notification(notify))
+                    return
+                else:
+                    await message.reply(
+                        text=(
+                            f"🛑 **TAQIQLANGAN SO'Z ANIQLANDI** 🛑\n\n"
+                            f"⚠️ Ushbu xabarda adminlar tomonidan taqiqlangan so'z ishlatildi.\n"
+                            f"Bot xabarni o'chirishi uchun botga **Administrator (Xabarlarni o'chirish)** huquqini bering!"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    return
+
     # 6. Haqorat va so'kinish filtri (Profanity filter)
     if group.get("profanity_enabled", 1) == 1 and contains_profanity(text):
         if not message.from_user and message.sender_chat:

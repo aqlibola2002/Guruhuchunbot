@@ -118,6 +118,12 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (chat_id, user_id, message_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS banned_words (
+                    chat_id INTEGER,
+                    word TEXT,
+                    PRIMARY KEY (chat_id, word)
+                );
                 """
             )
             # Mavjud bazalar uchun yangi ustunlarni tekshirib qo'shish
@@ -671,14 +677,52 @@ class Database:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def set_captcha_setting(self, chat_id: int, enabled: int) -> None:
-        """Anti-Bot Captcha himoyasini yoqish/o'chirish."""
+    async def add_banned_word(self, chat_id: int, word: str) -> bool:
+        """Guruhga yangi taqiqlangan so'z qo'shish."""
+        clean_word = word.strip().lower()
+        if not clean_word:
+            return False
         async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute(
-                "UPDATE groups SET captcha_enabled = ? WHERE chat_id = ?",
-                (enabled, chat_id),
+            try:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO banned_words (chat_id, word) VALUES (?, ?)",
+                    (chat_id, clean_word),
+                )
+                await conn.commit()
+                return True
+            except Exception:
+                return False
+
+    async def remove_banned_word(self, chat_id: int, word: str) -> bool:
+        """Guruhdan taqiqlangan so'zni olib tashlash."""
+        clean_word = word.strip().lower()
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "DELETE FROM banned_words WHERE chat_id = ? AND word = ?",
+                (chat_id, clean_word),
             )
             await conn.commit()
+            return cursor.rowcount > 0
+
+    async def get_banned_words(self, chat_id: int) -> list[str]:
+        """Guruhdagi barcha maxsus taqiqlangan so'zlarni olish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "SELECT word FROM banned_words WHERE chat_id = ? ORDER BY word ASC",
+                (chat_id,),
+            )
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+    async def clear_banned_words(self, chat_id: int) -> int:
+        """Guruhdagi barcha taqiqlangan so'zlarni tozalash."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "DELETE FROM banned_words WHERE chat_id = ?",
+                (chat_id,),
+            )
+            await conn.commit()
+            return cursor.rowcount
 
     async def get_user_by_id(self, chat_id: int, user_id: int) -> dict[str, Any] | None:
         async with aiosqlite.connect(self.db_path) as conn:
