@@ -12,12 +12,16 @@ class Database:
 
     async def init(self) -> None:
         async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("PRAGMA journal_mode = WAL;")
+            await conn.execute("PRAGMA synchronous = NORMAL;")
             await conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS groups (
                     chat_id INTEGER PRIMARY KEY,
                     title TEXT DEFAULT '',
                     rules TEXT DEFAULT '',
+                    invite_link TEXT DEFAULT '',
+                    username TEXT DEFAULT '',
                     antilink_enabled INTEGER DEFAULT 1,
                     antispam_enabled INTEGER DEFAULT 1,
                     antiforward_enabled INTEGER DEFAULT 1,
@@ -245,10 +249,100 @@ class Database:
                 await conn.execute("ALTER TABLE groups ADD COLUMN anti_caps_enabled INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN invite_link TEXT DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN username TEXT DEFAULT ''")
+            except Exception:
+                pass
             await conn.commit()
 
+        # Bot har safar ishga tushganda avtomatik zaxira nusxasini yaratish (Auto-backup)
+        try:
+            await self.auto_backup()
+        except Exception:
+            pass
+
+    async def auto_backup(self) -> str | None:
+        """Ma'lumotlar bazasining avtomatik zaxira nusxasini yaratish."""
+        import shutil
+        import os
+        from pathlib import Path
+
+        if not os.path.exists(self.db_path):
+            return None
+
+        backup_dir = Path(self.db_path).parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        today_str = datetime.date.today().strftime("%Y%m%d")
+        daily_backup = backup_dir / f"group_bot_backup_{today_str}.db"
+        auto_backup_file = backup_dir / "group_bot_auto_backup.db"
+
+        try:
+            # WAL rejimida to'liq checkpoint qilib barcha ma'lumotlarni faylga yozish
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("PRAGMA wal_checkpoint(FULL);")
+
+            shutil.copy2(self.db_path, auto_backup_file)
+            if not daily_backup.exists():
+                shutil.copy2(self.db_path, daily_backup)
+
+            # 7 kundan eski kunlik zaxiralarni avtomatik tozalash
+            all_backups = sorted(backup_dir.glob("group_bot_backup_*.db"))
+            if len(all_backups) > 7:
+                for old_f in all_backups[:-7]:
+                    try:
+                        old_f.unlink()
+                    except Exception:
+                        pass
+            return str(auto_backup_file)
+        except Exception:
+            return None
+
+    async def restore_database(self, backup_file_path: str) -> tuple[bool, str]:
+        """Tashqi .db fayldan barcha ma'lumotlarni 100% xavfsiz tiklash."""
+        import shutil
+        import os
+        from pathlib import Path
+
+        if not os.path.exists(backup_file_path):
+            return False, "❌ Zaxira fayli topilmadi!"
+
+        try:
+            # Baza strukturasini tekshirish
+            async with aiosqlite.connect(backup_file_path) as test_conn:
+                cursor = await test_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [r[0] for r in await cursor.fetchall()]
+                if "groups" not in tables or "users" not in tables:
+                    return False, "❌ Ushbu fayl haqiqiy guruh boti bazasi emas (zarur jadvallar yo'q)!"
+        except Exception as e:
+            return False, f"❌ Faylni o'qishda xatolik: {e}"
+
+        # Joriy bazani xavfsizlik uchun saqlab qo'yish
+        pre_restore = Path(self.db_path).parent / "backups" / "pre_restore_backup.db"
+        pre_restore.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if os.path.exists(self.db_path):
+                shutil.copy2(self.db_path, pre_restore)
+        except Exception:
+            pass
+
+        try:
+            shutil.copy2(backup_file_path, self.db_path)
+            await self.init()
+            return True, "🎉 Ma'lumotlar bazasi muvaffaqiyatli tiklandi! Barcha guruhlar va ma'lumotlar saqlandi."
+        except Exception as e:
+            if pre_restore.exists():
+                shutil.copy2(pre_restore, self.db_path)
+            return False, f"❌ Tiklash jarayonida xatolik: {e}"
+
     # ── Guruh sozlamalari ─────────────────────────────────────────────
-    async def get_or_create_group(self, chat_id: int, title: str = "") -> dict[str, Any]:
+    async def get_or_create_group(
+        self, chat_id: int, title: str = "", invite_link: str = "", username: str = ""
+    ) -> dict[str, Any]:
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute(
@@ -258,23 +352,55 @@ class Database:
             if not row:
                 await conn.execute(
                     """
-                    INSERT INTO groups (chat_id, title)
-                    VALUES (?, ?)
+                    INSERT INTO groups (chat_id, title, invite_link, username)
+                    VALUES (?, ?, ?, ?)
                     """,
-                    (chat_id, title),
+                    (chat_id, title, invite_link, username),
                 )
                 await conn.commit()
                 cursor = await conn.execute(
                     "SELECT * FROM groups WHERE chat_id = ?", (chat_id,)
                 )
                 row = await cursor.fetchone()
-            elif title and row["title"] != title:
-                await conn.execute(
-                    "UPDATE groups SET title = ? WHERE chat_id = ?",
-                    (title, chat_id),
-                )
-                await conn.commit()
+            else:
+                updates = []
+                params = []
+                if title and row["title"] != title:
+                    updates.append("title = ?")
+                    params.append(title)
+                if invite_link and row["invite_link"] != invite_link:
+                    updates.append("invite_link = ?")
+                    params.append(invite_link)
+                if username and row["username"] != username:
+                    updates.append("username = ?")
+                    params.append(username)
+                if updates:
+                    params.append(chat_id)
+                    await conn.execute(
+                        f"UPDATE groups SET {', '.join(updates)} WHERE chat_id = ?",
+                        params,
+                    )
+                    await conn.commit()
+                    cursor = await conn.execute(
+                        "SELECT * FROM groups WHERE chat_id = ?", (chat_id,)
+                    )
+                    row = await cursor.fetchone()
             return dict(row)
+
+    async def update_group_link(self, chat_id: int, invite_link: str, username: str = "") -> None:
+        """Guruh havolasi (linki) va usernamesini yangilab saqlash."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            if username:
+                await conn.execute(
+                    "UPDATE groups SET invite_link = ?, username = ? WHERE chat_id = ?",
+                    (invite_link, username, chat_id),
+                )
+            else:
+                await conn.execute(
+                    "UPDATE groups SET invite_link = ? WHERE chat_id = ?",
+                    (invite_link, chat_id),
+                )
+            await conn.commit()
 
     async def update_group_setting(self, chat_id: int, setting_name: str, value: int) -> None:
         allowed = {
@@ -1226,7 +1352,7 @@ class Database:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute(
                 """
-                SELECT g.chat_id, g.title, g.created_at,
+                SELECT g.chat_id, g.title, g.invite_link, g.username, g.created_at,
                        COUNT(DISTINCT u.user_id) as member_count,
                        COALESCE(SUM(u.message_count), 0) as total_messages
                 FROM groups g

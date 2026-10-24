@@ -67,7 +67,7 @@ async def auto_delete_message(msg: Message, delay: int = AUTO_DELETE_NOTIFICATIO
 
 
 # ── /admin [Guruh admin paneliga tezkor kirish] ──────────────────────
-@router.message(Command("admin", ignore_case=True))
+@router.message(Command("admin", "holat", "status", "bot", ignore_case=True))
 async def cmd_admin_info(message: Message, bot: Bot) -> None:
     """Guruh adminlari uchun: bot holati va tezkor boshqaruv paneli."""
     if message.chat.type in ("private",):

@@ -89,7 +89,47 @@ async def on_bot_added_to_chat(event: ChatMemberUpdated, bot: Bot) -> None:
 
         # Agar bot guruhga yangi a'zo yoki admin qilib qo'shilgan bo'lsa
         if old_status not in ("member", "administrator") and new_status in ("member", "administrator"):
-            await send_group_intro(bot, event.chat.id, event.chat.title or "guruhingiz")
+            chat_title = event.chat.title or "Guruh"
+            chat_username = event.chat.username or ""
+            invite_link = f"https://t.me/{chat_username}" if chat_username else ""
+
+            # Agar ochiq havola bo'lmasa va bot admin bo'lsa, taklif havolasini olamiz
+            if not invite_link and new_status == "administrator":
+                try:
+                    invite_link = await bot.export_chat_invite_link(event.chat.id)
+                except Exception:
+                    pass
+
+            await db.get_or_create_group(event.chat.id, chat_title, invite_link, chat_username)
+            await send_group_intro(bot, event.chat.id, chat_title)
+
+            # Bot Egasiga (Super Adminlarga) yangi guruh havolasi bilan xabar yetkazish
+            from config import ADMIN_IDS
+            for admin_id in ADMIN_IDS:
+                try:
+                    members_cnt = "?"
+                    try:
+                        members_cnt = await bot.get_chat_member_count(event.chat.id)
+                    except Exception:
+                        pass
+                    link_display = f"[Guruhga o'tish]({invite_link})" if invite_link else "_Olinmadi (bot admin qilinmagan)_"
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=(
+                            f"🎉 **BOT YANGI GURUHGA QO'SHILDI!** 🏛\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"📌 **Nomi:** {chat_title}\n"
+                            f"🆔 **ID:** `{event.chat.id}`\n"
+                            f"👥 **A'zolar soni:** {members_cnt} ta\n"
+                            f"🔗 **Guruh havolasi:** {link_display}\n"
+                            f"👤 **Qo'shgan shaxs:** {event.from_user.full_name} (`{event.from_user.id}`)\n\n"
+                            f"💡 Barcha guruhlar ro'yxatini `/panel` yoki `/guruhlar` orqali ko'rishingiz mumkin."
+                        ),
+                        parse_mode="Markdown",
+                        disable_web_page_preview=True,
+                    )
+                except Exception:
+                    pass
 
 
 async def send_invite_notification(

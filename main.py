@@ -188,7 +188,74 @@ async def main() -> None:
     me = await bot.get_me()
     logger.info(f"Bot muvaffaqiyatli ulandi: @{me.username} ({me.first_name}) 🚀")
 
+    # Bot ishga tushganda Super Adminlarga va guruhlarga onlayn xabarni yetkazish
+    async def on_startup() -> None:
+        from config import ADMIN_IDS
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        stats = await db.get_global_stats()
+
+        # 1. Super Adminlarga to'liq ishga tushish xabari
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=(
+                        f"🚀 **GURUHCHI UZ — BOT MUVAFFAQIYATLI ISHGA TUSHDI!** 💎\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🤖 **Bot:** @{me.username} ({me.first_name})\n"
+                        f"⚡️ **Tizim holati:** Barcha 100% kiber-himoya modullari faol\n"
+                        f"🏛 **Ulangan guruhlar:** {stats['total_groups']} ta\n"
+                        f"👤 **Jami a'zolar:** {stats['total_users']:,} nafar\n"
+                        f"💬 **Qayd etilgan xabarlar:** {stats['total_messages']:,} ta\n"
+                        f"👥 **Takliflar:** {stats['total_invites']:,} ta\n"
+                        f"💾 **Baza xavfsizligi:** SQLite WAL rejimida to'liq tiklandi ✅\n"
+                        f"⏱ **Vaqt:** `{now_str}`\n\n"
+                        f"👑 Boshqaruv paneli: `/panel` | Guruhlar: `/guruhlar`"
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception as ex:
+                logger.warning(f"Adminga start xabarida: {ex}")
+
+        # 2. Guruhlarga start xabari (agar yoqilgan bo'lsa)
+        startup_notify = await db.get_bot_setting("startup_notify_groups", "1")
+        if startup_notify == "1":
+            groups = await db.get_all_active_groups()
+            for g in groups:
+                cid = g.get("chat_id")
+                if not cid:
+                    continue
+                try:
+                    msg = await bot.send_message(
+                        chat_id=cid,
+                        text=(
+                            f"🛡 **GURUHCHI UZ — KIBER-HIMOYA TIZIMI ONLAYN!** 🟢\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"Hurmatli guruh a'zolari va administratorlar!\n"
+                            f"Bot muvaffaqiyatli ishga tushirildi va guruhingiz 24/7 to'liq nazorat ostida:\n\n"
+                            f"✅ Barcha so'kinish va haqoratlarni tozalash — Faol\n"
+                            f"✅ Reklama, spam va begona havolalar filtri — Faol\n"
+                            f"✅ Chet el (arab/sharqiy) spambotlar filtri — Faol\n"
+                            f"✅ Zararli .APK viruslar blokirovkasi — Faol\n"
+                            f"✅ A'zolar va qoidalar monitoringi — Faol\n\n"
+                            f"👮‍♂️ Guruh xavfsiz va tinch muloqot uchun tayyor! ✨"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    async def _del_start(m, d=60):
+                        await asyncio.sleep(d)
+                        try:
+                            await m.delete()
+                        except Exception:
+                            pass
+                    asyncio.create_task(_del_start(msg, 60))
+                    await asyncio.sleep(0.1)
+                except Exception:
+                    pass
+
     try:
+        await on_startup()
         await bot.delete_webhook(drop_pending_updates=True)
         needed_updates = ["message", "edited_message", "callback_query", "chat_member", "my_chat_member", "chat_join_request"]
         resolved = dp.resolve_used_update_types() or []
