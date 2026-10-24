@@ -47,6 +47,12 @@ async def cmd_start(message: Message, bot: Bot) -> None:
             ],
             [
                 InlineKeyboardButton(
+                    text="📢 Homiy kanallarni sozlash (Shaxsiy)",
+                    callback_data="pm_grplist",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="📖 Buyruqlar qo'llanmasi",
                     callback_data="btn_help_info",
                 )

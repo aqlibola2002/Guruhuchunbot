@@ -667,6 +667,16 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
+    async def get_user_group_chat_ids(self, user_id: int) -> set[int]:
+        """Foydalanuvchi faol bo'lgan yoki a'zo bo'lgan barcha guruhlar ID lari."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "SELECT DISTINCT chat_id FROM users WHERE user_id = ?",
+                (user_id,),
+            )
+            rows = await cursor.fetchall()
+            return {r[0] for r in rows if r[0]}
+
     # ── Foydalanuvchilar va Faollik ────────────────────────────────────
     async def record_user_message(
         self, chat_id: int, user_id: int, full_name: str, username: str | None
