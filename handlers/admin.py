@@ -18,6 +18,7 @@ from config import MAX_WARNS, DEFAULT_MUTE_SECONDS, AUTO_DELETE_NOTIFICATION_DEL
 from database.db import db
 from filters.admin_filter import is_admin
 from services.target_resolver import resolve_target
+from handlers.moderation import send_audit_log
 
 router = Router(name="admin")
 
@@ -95,11 +96,15 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
     bot_can_del = await can_bot_delete(bot, message.chat.id)
     bot_status = "✅ Admin (o'chira oladi)" if bot_can_del else "⚠️ Admin emas (o'chira olmaydi!)"
 
+    log_ch = group.get("log_channel_id", "")
+    log_status = f"✅ Ulangan (`{log_ch}`)" if log_ch else "❌ Ulanmagan (`/setlog` orqali)"
+
     panel_text = (
         f"👑 **GURUH BOSHQARUV PANELI (ADMIN)** 🛡\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📍 **Guruh:** «{message.chat.title}»\n"
-        f"🤖 **Bot maqomi:** {bot_status}\n\n"
+        f"🤖 **Bot maqomi:** {bot_status}\n"
+        f"🛡 **Audit log kanali:** {log_status}\n\n"
         f"⚙️ **FAOL HIMOYA VA NAZORAT TIZIMLARI:**\n"
         f"├ {s(group.get('profanity_enabled', 1))} 🤬 Haqorat va so'kinish filtri\n"
         f"├ {'🚫' if group.get('block_stickers', 0) == 1 else '🟢'} 🎭 Stiker va GIF taqiqi\n"
@@ -107,6 +112,8 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"├ {s(group.get('antilink_enabled', 1))} 🔗 Begona linklar bloklanishi\n"
         f"├ {s(group.get('antispam_enabled', 1))} 🚫 Reklama / Spam tozalash\n"
         f"├ {s(group.get('anti_flood_enabled', 1))} ⚡️ Anti-Flood (Tezkor spam filtri)\n"
+        f"├ {s(group.get('anti_duplicate_enabled', 1))} 📑 Copy-Paste (Dublikat) spam filtri\n"
+        f"├ {s(group.get('anti_emoji_spam', 1))} 🔠 Premium Emoji cheklovi (>5 ta taqiq)\n"
         f"├ {s(group.get('anti_arabic_enabled', 0))} 🈲 Arab/Raid spambot filtri\n"
         f"├ {'🚫' if group.get('anti_inline_bot', 0) == 1 else '🟢'} 🤖 Inline botlar taqiqi\n"
         f"├ {s(group.get('night_mode_enabled', 0))} 🌙 Tungi rejim ({group.get('night_mode_start', '23:00')}-{group.get('night_mode_end', '07:00')})\n"
@@ -116,9 +123,13 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"├ {inv_status} 👥 Majburiy a'zo qo'shish talabi\n"
         f"├ {s(group.get('welcome_enabled', 1))} 👋 Yangi a'zolarni kutib olish\n"
         f"├ {s(group.get('scheduled_enabled', 1))} ⏰ Rejali avto-xabarlar\n"
+        f"├ {s(group.get('weekly_digest_enabled', 1))} 📊 Haftalik hisobot (Dushanba 09:00)\n"
         f"└ ✅ 🦠 APK Virus & Troyan filtri (Doimiy faol)\n\n"
         f"📌 **ASOSIY BUYRUQLAR RO'YXATI:**\n"
         f"├ ⚙️ `/sozlamalar` — Himoya sozlamalari boshqaruv menyusi\n"
+        f"├ 📢 `/setlog [kanal]` — Audit log kanalini ulash (/dellog o'chirish)\n"
+        f"├ 📊 `/haftalik` — Haftalik xulosa hisobotini darhol olish\n"
+        f"├ 🚨 `@admin` yoki `/sos` — Shoshilinch admin chaqiruv tizimi\n"
         f"├ 🌙 `/tun [on|off]` — Tungi avto-qulf rejimini sozlash\n"
         f"├ 📥 `/zayafka [on|off]` — Qo'shilish arizalarini 1 soniyada avto-qabul qilish\n"
         f"├ 🔇 `/chekla [10m|2h|1d]` — Yozishni vaqtincha cheklash (Mute)\n"
@@ -608,15 +619,25 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
             until_date=until_date,
         )
         await db.record_punishment(message.chat.id, "mute")
+        admin_n = get_admin_name(message)
         await message.reply(
             f"🔇 **YOZISHDAN CHEKLANDI (MUTE)** 🔇\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"⏳ **Muddat:** **{duration_str}**\n"
             f"📝 **Sabab:** {reason}\n"
-            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            f"👮‍♂️ **Admin:** {admin_n}",
             parse_mode="Markdown",
         )
+        asyncio.create_task(send_audit_log(
+            bot=bot,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title or "Guruh",
+            event_title="Admin MUTE",
+            user_name=target.full_name,
+            user_id=target.user_id,
+            reason=f"Muddat: {duration_str} | Sabab: {reason} | Admin: {admin_n}",
+        ))
     except Exception as e:
         await message.reply(f"❌ Xatolik yuz berdi: {e}\n(Bot guruhda admin ekanligiga va 'Restrict members' huquqi borligiga ishonch hosil qiling).")
 
@@ -656,14 +677,24 @@ async def cmd_unmute(message: Message, bot: Bot) -> None:
                 can_add_web_page_previews=True,
             ),
         )
+        admin_n = get_admin_name(message)
         await message.reply(
             f"🔊 **YOZISH CHEKLOVI OLIB TASHLANDI (UNMUTE)!** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"✨ Endi guruhda bemalol xabar yoza oladi.\n\n"
-            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            f"👮‍♂️ **Admin:** {admin_n}",
             parse_mode="Markdown",
         )
+        asyncio.create_task(send_audit_log(
+            bot=bot,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title or "Guruh",
+            event_title="Admin UNMUTE",
+            user_name=target.full_name,
+            user_id=target.user_id,
+            reason=f"Yozish cheklovi olib tashlandi | Admin: {admin_n}",
+        ))
     except Exception as e:
         await message.reply(f"❌ Unmute qilishda xatolik: {e}")
 
@@ -701,15 +732,25 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     try:
         await bot.ban_chat_member(chat_id=message.chat.id, user_id=target.user_id)
         await db.record_punishment(message.chat.id, "ban")
+        admin_n = get_admin_name(message)
         await message.reply(
             f"🚫 **GURUHDAN CHIQARILDI (BAN)** 🚫\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"📝 **Sabab:** {reason}\n"
             f"⚡️ **Holat:** Guruhdan chiqarildi va bloklandi\n"
-            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            f"👮‍♂️ **Admin:** {admin_n}",
             parse_mode="Markdown",
         )
+        asyncio.create_task(send_audit_log(
+            bot=bot,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title or "Guruh",
+            event_title="Admin BAN",
+            user_name=target.full_name,
+            user_id=target.user_id,
+            reason=f"Guruhdan haydaldi va bloklandi | Sabab: {reason} | Admin: {admin_n}",
+        ))
     except Exception as e:
         await message.reply(f"❌ Ban qilishda xatolik: {e}")
 
@@ -742,14 +783,24 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
             user_id=target.user_id,
             only_if_banned=True,
         )
+        admin_n = get_admin_name(message)
         await message.reply(
             f"🕊 **FOYDALANUVCHI BANDAN CHIQARILDI (UNBAN)!** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **Foydalanuvchi:** {target.full_name}\n"
             f"🚪 Endi guruhga qayta qo'shilishi mumkin.\n\n"
-            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            f"👮‍♂️ **Admin:** {admin_n}",
             parse_mode="Markdown",
         )
+        asyncio.create_task(send_audit_log(
+            bot=bot,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title or "Guruh",
+            event_title="Admin UNBAN",
+            user_name=target.full_name,
+            user_id=target.user_id,
+            reason=f"Bandan chiqarildi | Admin: {admin_n}",
+        ))
     except Exception as e:
         await message.reply(f"❌ Bandan chiqarishda xatolik: {e}")
 
@@ -1253,6 +1304,24 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
                 callback_data="toggle_scheduled",
             )
         ],
+        [
+            InlineKeyboardButton(
+                text=f"📑 Dublikat (Copy-Paste) spam: {mark(group.get('anti_duplicate_enabled', 1))}",
+                callback_data="toggle_anti_duplicate",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔠 Premium Emoji cheklovi: {mark(group.get('anti_emoji_spam', 1))}",
+                callback_data="toggle_anti_emoji_spam",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"📊 Haftalik hisobot (Dushanba): {mark(group.get('weekly_digest_enabled', 1))}",
+                callback_data="toggle_weekly_digest",
+            )
+        ],
         [InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_settings")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -1304,16 +1373,16 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
             await db.update_group_setting(call.message.chat.id, setting_key, new_val)
         group[setting_key] = new_val
     else:
-        if raw in ("block_stickers", "block_voice", "anti_inline_bot"):
+        if raw in ("block_stickers", "block_voice", "anti_inline_bot", "anti_emoji_spam"):
             setting_key = raw
-            current_val = group.get(setting_key, 0)
+            current_val = group.get(setting_key, 0 if raw != "anti_emoji_spam" else 1)
         elif raw == "auto_approve":
             setting_key = "auto_approve_joins"
             current_val = group.get(setting_key, 1)
         elif raw in ("night_mode", "anti_caps"):
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 0)
-        elif raw in ("anti_flood", "anti_channel", "anti_arabic"):
+        elif raw in ("anti_flood", "anti_channel", "anti_arabic", "anti_duplicate", "weekly_digest"):
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 1)
         else:
@@ -2375,6 +2444,174 @@ async def cmd_security_audit(message: Message, bot: Bot) -> None:
         f"👮‍♂️ *Guruh 24/7 avtomatik himoya ostida!* ✅"
     )
     await message.reply(audit_text, parse_mode="Markdown")
+
+
+# ── /setlog [kanal] (Xavfsizlik audit log kanalini ulash) ─────────────
+@router.message(Command("setlog", "logkanal", ignore_case=True))
+async def cmd_set_log_channel(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(
+            "📋 **GURUH AUDIT JURNALI (LOG-KANAL) SOZLASH:**\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Format: `/setlog [kanal_id yoki @username]`\n"
+            "Masalan: `/setlog @mening_audit_kanalim` yoki `/setlog -1001234567890`\n\n"
+            "💡 *Eslatma: Bot o'sha kanalga xabar yuborishi uchun kanalda Administrator bo'lishi shart.*",
+            parse_mode="Markdown",
+        )
+        return
+
+    channel_target = parts[1].strip()
+    try:
+        test_msg = await bot.send_message(
+            chat_id=channel_target,
+            text=f"✅ **«{message.chat.title}»** guruhining xavfsizlik audit jurnali muvaffaqiyatli ulandi! 🛡",
+            parse_mode="Markdown",
+        )
+        await db.set_group_log_channel(message.chat.id, str(test_msg.chat.id))
+        await message.reply(
+            f"✅ **XAVFSIZLIK AUDIT JURNALI FAOL!** 📡\n\n"
+            f"🏛 Guruh: **{message.chat.title}**\n"
+            f"📢 Kanal: `{channel_target}` (`{test_msg.chat.id}`)\n\n"
+            f"Endi guruhdagi barcha o'chirilgan so'kinishlar, virusli fayllar, reklama va cheklovlar ushbu kanalga to'liq yetkazib boriladi.",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await message.reply(
+            f"❌ **Kanalga ulanishda xatolik yuz berdi:**\n`{e}`\n\n"
+            f"💡 Iltimos, botni `{channel_target}` kanaliga qo'shib, unga **Administrator (Xabar yuborish)** huquqini bering!",
+            parse_mode="Markdown",
+        )
+
+
+@router.message(Command("dellog", "removelog", ignore_case=True))
+async def cmd_del_log_channel(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        return
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        return
+
+    await db.set_group_log_channel(message.chat.id, "")
+    await message.reply("🗑 Audit log kanali muvaffaqiyatli o'chirildi! Endi hisobotlar kanalga yuborilmaydi.")
+
+
+# ── /haftalik yoki /xulosa (Haftalik faollik hisoboti) ─────────────────
+@router.message(Command("haftalik", "xulosa", "weekly", ignore_case=True))
+async def cmd_weekly_summary(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    chat_id = message.chat.id
+    chat_title = message.chat.title or "Guruh"
+    stats = await db.get_weekly_group_stats(chat_id)
+    w_msgs = stats["weekly_messages"]
+    w_invites = stats["weekly_invites"]
+    w_clean = stats["weekly_cleanups"]
+    top_users = stats["top_users"]
+
+    top_text = ""
+    if top_users:
+        top_lines = []
+        for rank, u in enumerate(top_users, 1):
+            medal = "🥇" if rank == 1 else ("🥈" if rank == 2 else "🥉")
+            name = (u.get("full_name") or "A'zo").replace("*", "").replace("`", "")
+            top_lines.append(f"{medal} **{name}** — {u.get('message_count', 0):,} ta xabar")
+        top_text = "\n\n🏆 **HAFTANING ENG FAOL A'ZOLARI:**\n" + "\n".join(top_lines)
+
+    text = (
+        f"📊 **«{chat_title}» — HAFTALIK GURUH XULOSASI** 🏆\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📅 **Davr:** O'tgan 7 kunlik faollik monitoringi\n\n"
+        f"💬 **Yozilgan xabarlar:** **{w_msgs:,}** ta\n"
+        f"👥 **Yangi qo'shilgan takliflar:** **{w_invites:,}** ta\n"
+        f"🛡 **Zararsizlantirilgan spam va so'kinishlar:** **{w_clean:,}** ta{top_text}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👮‍♂️ Guruh 24/7 kiber-himoya nazorati ostida! ✨"
+    )
+    await message.reply(text, parse_mode="Markdown")
+
+
+# ── 🚨 Shoshilinch Admin Chaqiruv Tizimi (@admin, /sos, /admin_chaqir) ──
+SOS_COOLDOWN: dict[tuple[int, int], float] = {}
+
+
+@router.message(F.text.regexp(r"(?i)(?:^|\s)@admin(?:\s|$)") | Command("sos", "admin_chaqir", "chaqir", ignore_case=True))
+async def cmd_call_admin_sos(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        return
+
+    user_id = message.from_user.id if message.from_user else 0
+    now = asyncio.get_event_loop().time()
+    key = (message.chat.id, user_id)
+
+    # 30 soniyalik antiflood cheklovi
+    if now - SOS_COOLDOWN.get(key, 0.0) < 30.0:
+        return
+    SOS_COOLDOWN[key] = now
+
+    caller_name = message.from_user.full_name if message.from_user else "Guruh a'zosi"
+    caller_mention = f"[{caller_name}](tg://user?id={user_id})" if user_id else caller_name
+
+    reply_to = message.reply_to_message
+    reason = message.text or ""
+    for p in ["@admin", "/sos", "/admin_chaqir", "/chaqir"]:
+        reason = re.sub(re.escape(p), "", reason, flags=re.IGNORECASE)
+    reason = reason.strip() or "Shoshilinch admin yordami so'raldi"
+
+    msg_link = ""
+    reported_info = ""
+    if reply_to:
+        cid_str = str(message.chat.id).replace("-100", "")
+        msg_link = f"https://t.me/c/{cid_str}/{reply_to.message_id}"
+        rep_user = reply_to.from_user.full_name if reply_to.from_user else "Noma'lum"
+        rep_snip = (reply_to.text or reply_to.caption or "Media/fayl")[:100]
+        reported_info = f"\n⚠️ **Shikoyat qilingan:** {rep_user}\n📄 **Xabar:** `{rep_snip}`"
+
+    ack = await message.reply(
+        "🚨 **ADMINISTRATORLAR XABARDOR QILINDI!** 👮‍♂️\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Guruh xavfsizligini ta'minlash maqsadida xabaringiz adminlarga yetkazildi.\n"
+        "Holat tez orada ko'rib chiqiladi. Rahmat!",
+        parse_mode="Markdown",
+    )
+    asyncio.create_task(auto_delete_message(ack, 60))
+
+    # Log kanaliga yetkazish
+    log_ch = await db.get_group_log_channel(message.chat.id)
+    if log_ch:
+        link_str = f"\n🔗 [Shikoyat qilingan xabar havolasi]({msg_link})" if msg_link else ""
+        try:
+            await bot.send_message(
+                chat_id=log_ch,
+                text=(
+                    f"🚨 **SHOSHILINCH ADMIN CHAQIRILDI (SOS)** 🚨\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏛 **Guruh:** {message.chat.title}\n"
+                    f"👤 **Chaqiruvchi:** {caller_mention}\n"
+                    f"📝 **Sabab:** {reason}{reported_info}{link_str}"
+                ),
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            pass
+
 
 
 

@@ -257,6 +257,22 @@ class Database:
                 await conn.execute("ALTER TABLE groups ADD COLUMN username TEXT DEFAULT ''")
             except Exception:
                 pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN log_channel_id TEXT DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_duplicate_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_emoji_spam INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN weekly_digest_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
             await conn.commit()
 
         # Bot har safar ishga tushganda avtomatik zaxira nusxasini yaratish (Auto-backup)
@@ -419,6 +435,9 @@ class Database:
             "anti_arabic_enabled",
             "anti_flood_enabled",
             "anti_inline_bot",
+            "anti_duplicate_enabled",
+            "anti_emoji_spam",
+            "weekly_digest_enabled",
         }
         if setting_name not in allowed:
             return
@@ -428,6 +447,72 @@ class Database:
                 (value, chat_id),
             )
             await conn.commit()
+
+    async def set_group_log_channel(self, chat_id: int, log_channel_id: str) -> None:
+        """Guruh xavfsizlik audit jurnali kanali ID sini saqlash."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute(
+                "UPDATE groups SET log_channel_id = ? WHERE chat_id = ?",
+                (str(log_channel_id).strip(), chat_id),
+            )
+            await conn.commit()
+
+    async def get_group_log_channel(self, chat_id: int) -> str:
+        """Guruh audit log kanali ID sini olish."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT log_channel_id FROM groups WHERE chat_id = ?",
+                (chat_id,),
+            )
+            row = await cursor.fetchone()
+            return row["log_channel_id"] if row and row["log_channel_id"] else ""
+
+    async def get_weekly_group_stats(self, chat_id: int) -> dict[str, Any]:
+        """O'tgan 7 kunlik guruh statistikasi va eng faol a'zolar."""
+        start_date = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                """
+                SELECT SUM(messages_count) as total_msgs,
+                       SUM(warns_given) as total_warns,
+                       SUM(mutes_given) as total_mutes,
+                       SUM(bans_given) as total_bans
+                FROM daily_stats
+                WHERE chat_id = ? AND date >= ?
+                """,
+                (chat_id, start_date),
+            )
+            row = await cursor.fetchone()
+            w_msgs = (row["total_msgs"] or 0) if row else 0
+            w_cleanups = ((row["total_warns"] or 0) + (row["total_mutes"] or 0) + (row["total_bans"] or 0)) if row else 0
+
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM user_invites WHERE chat_id = ? AND created_at >= ?",
+                (chat_id, start_date),
+            )
+            inv_row = await cursor.fetchone()
+            w_invites = inv_row[0] if inv_row else 0
+
+            cursor = await conn.execute(
+                """
+                SELECT user_id, full_name, message_count
+                FROM users
+                WHERE chat_id = ? AND message_count > 0
+                ORDER BY message_count DESC
+                LIMIT 3
+                """,
+                (chat_id,),
+            )
+            top_users = [dict(r) for r in await cursor.fetchall()]
+
+            return {
+                "weekly_messages": w_msgs,
+                "weekly_cleanups": w_cleanups,
+                "weekly_invites": w_invites,
+                "top_users": top_users,
+            }
 
     async def set_night_mode(
         self, chat_id: int, enabled: int | None = None, start: str | None = None, end: str | None = None

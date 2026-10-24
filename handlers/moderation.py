@@ -58,6 +58,10 @@ FLOOD_CACHE: dict[tuple[int, int], list[float]] = {}
 FLOOD_THRESHOLD_COUNT = 5
 FLOOD_THRESHOLD_SECONDS = 4.0
 
+# Bir xil xabarni qayta-qayta yuboruvchi copy-paste spamerlar keshi: {(chat_id, user_id): (clean_text, timestamp, count)}
+DUPLICATE_CACHE: dict[tuple[int, int], tuple[str, float, int]] = {}
+DUPLICATE_WINDOW_SECONDS = 60.0
+
 
 def is_flooding(chat_id: int, user_id: int) -> bool:
     """Foydalanuvchi qisqa vaqtda ketma-ket haddan tashqari ko'p xabar yuborayotganini aniqlaydi."""
@@ -72,6 +76,71 @@ def is_flooding(chat_id: int, user_id: int) -> bool:
     timestamps.append(now)
     FLOOD_CACHE[key] = timestamps
     return len(timestamps) >= FLOOD_THRESHOLD_COUNT
+
+
+def is_duplicate_message(chat_id: int, user_id: int, raw_text: str) -> tuple[bool, int]:
+    """Foydalanuvchi bir xil xabarni 60 soniya ichida qayta-qayta yuborayotganini aniqlash."""
+    if not raw_text or len(raw_text.strip()) < 4:
+        return False, 1
+
+    clean_t = re.sub(r"\s+", " ", raw_text.strip().lower())
+    try:
+        now = asyncio.get_event_loop().time()
+    except Exception:
+        import time
+        now = time.time()
+
+    key = (chat_id, user_id)
+    prev = DUPLICATE_CACHE.get(key)
+
+    if prev:
+        prev_text, prev_time, count = prev
+        if prev_text == clean_t and (now - prev_time <= DUPLICATE_WINDOW_SECONDS):
+            new_count = count + 1
+            DUPLICATE_CACHE[key] = (clean_t, now, new_count)
+            return True, new_count
+
+    DUPLICATE_CACHE[key] = (clean_t, now, 1)
+    return False, 1
+
+
+async def send_audit_log(
+    bot: Bot,
+    chat_id: int,
+    chat_title: str,
+    event_title: str,
+    user_name: str,
+    user_id: int | None,
+    reason: str,
+    snippet: str = "",
+) -> None:
+    """Guruh xavfsizlik audit log kanaliga hodisani yetkazish."""
+    try:
+        log_channel = await db.get_group_log_channel(chat_id)
+        if not log_channel:
+            return
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        mention = safe_mention(user_name, user_id)
+        u_info = f"{mention} (`{user_id}`)" if user_id else f"{mention}"
+
+        snip_text = ""
+        if snippet:
+            clean_snip = snippet.replace("`", "'").replace("*", "")[:200]
+            snip_text = f"\n📄 **Xabar:** `{clean_snip}`"
+
+        card = (
+            f"🛡 **GURUH XAVFSIZLIK AUDITI** 🛡\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏛 **Guruh:** {chat_title}\n"
+            f"⚡️ **Hodisa:** {event_title}\n"
+            f"👤 **Qoidabuzar:** {u_info}\n"
+            f"📝 **Sabab:** {reason}{snip_text}\n"
+            f"⏰ **Vaqt:** `{now_str}`"
+        )
+        await bot.send_message(chat_id=log_channel, text=card, parse_mode="Markdown")
+    except Exception as e:
+        logger.debug(f"Audit log yuborishda: {e}")
 
 
 def contains_arabic_or_oriental(text: str) -> bool:
@@ -449,6 +518,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 parse_mode="Markdown",
             )
             asyncio.create_task(auto_delete_notification(notify, 60))
+            asyncio.create_task(send_audit_log(
+                bot=bot,
+                chat_id=message.chat.id,
+                chat_title=message.chat.title or "Guruh",
+                event_title="Kanal Nomidan Yozish Taqiqi",
+                user_name=ch_title,
+                user_id=None,
+                reason="Begona kanal orqali yozishga urindi (Kanal bloklandi)",
+                snippet=message.text or message.caption or "",
+            ))
             return
 
     # 0.2 Ismda reklama / havola va so'kinish tekshiruvi (Anti-Name Spam & Profanity)
@@ -472,6 +551,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 parse_mode="Markdown",
             )
             asyncio.create_task(auto_delete_notification(notify, 60))
+            asyncio.create_task(send_audit_log(
+                bot=bot,
+                chat_id=message.chat.id,
+                chat_title=message.chat.title or "Guruh",
+                event_title="Ismda Havola / Reklama",
+                user_name=message.from_user.full_name,
+                user_id=message.from_user.id,
+                reason="Profil ismida havola/reklama aniqlandi",
+                snippet=message.from_user.full_name or "",
+            ))
             return
 
         if contains_profanity(user_full_name):
@@ -492,6 +581,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 parse_mode="Markdown",
             )
             asyncio.create_task(auto_delete_notification(notify, 60))
+            asyncio.create_task(send_audit_log(
+                bot=bot,
+                chat_id=message.chat.id,
+                chat_title=message.chat.title or "Guruh",
+                event_title="Ismda So'kinish / Haqorat",
+                user_name=message.from_user.full_name,
+                user_id=message.from_user.id,
+                reason="Profil ismida so'kinish/haqorat aniqlandi",
+                snippet=message.from_user.full_name or "",
+            ))
             return
 
     # 1. Faollikni hisoblash (xabarlar sonini yozib borish) va xabar ID sini saqlash
@@ -624,6 +723,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             )
 
         asyncio.create_task(auto_delete_notification(notify, APK_WARNING_NOTIFICATION_DELAY))
+        asyncio.create_task(send_audit_log(
+            bot=bot,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title or "Guruh",
+            event_title="Zararli APK / Virus Fayl",
+            user_name=sender_name,
+            user_id=sender_id,
+            reason=f"Zararli fayl ({safe_fname}) aniqlandi va o'chirildi",
+            snippet=safe_fname,
+        ))
         return
 
     # ❗ AGAR FOYDALANUVCHI GURUH ADMINI BO'LSA — BOSHQA TEKSHIRUVLARGA TEGINILMAYDI
@@ -746,6 +855,98 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     parse_mode="Markdown",
                 )
                 asyncio.create_task(auto_delete_notification(notify, AUTO_DELETE_NOTIFICATION_DELAY))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="Anti-Flood (Tezkor Spam)",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason="Haddan tashqari tez xabar yozgani sababli 15m MUTE berildi",
+                ))
+                return
+
+    # 📑 2.1.1 Anti-Duplicate / Copy-Paste Spam (Bir xil xabarni qayta-qayta yozish filtri)
+    raw_text = message.text or message.caption or ""
+    if group.get("anti_duplicate_enabled", 1) == 1 and raw_text and message.from_user:
+        is_dup, dup_count = is_duplicate_message(message.chat.id, message.from_user.id, raw_text)
+        if is_dup:
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+
+                mute_info = ""
+                if dup_count >= 3:
+                    until_date = datetime.now(timezone.utc) + timedelta(minutes=15)
+                    try:
+                        await bot.restrict_chat_member(
+                            chat_id=message.chat.id,
+                            user_id=message.from_user.id,
+                            permissions=ChatPermissions(can_send_messages=False),
+                            until_date=until_date,
+                        )
+                        await db.record_punishment(message.chat.id, "mute")
+                        mute_info = "\n⏳ **Qayta-qayta takrorlaganingiz sababli 15 daqiqaga yozishdan cheklandingiz (MUTE).**"
+                    except Exception:
+                        pass
+
+                mention = safe_mention(message.from_user.full_name, message.from_user.id)
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"📑 **COPY-PASTE (DUBLIKAT) SPAM FILTRI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🚫 {mention}, bir xil xabarni qayta-qayta yuborish taqiqlangan!\n"
+                        f"⚡️ Xabaringiz o'chirildi.{mute_info}"
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify, 60))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="Dublikat (Copy-Paste) Spam",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason=f"Bir xil xabarni {dup_count} marta takrorladi",
+                    snippet=raw_text,
+                ))
+                return
+
+    # 🔠 2.1.2 Anti-Premium Custom Emoji Spam (Haddan ortiq animatsiyali emojilar filtri)
+    if group.get("anti_emoji_spam", 1) == 1 and message.from_user:
+        entities = (message.entities or []) + (message.caption_entities or [])
+        custom_emoji_count = sum(1 for e in entities if e.type == "custom_emoji")
+        if custom_emoji_count > 5:
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                mention = safe_mention(message.from_user.full_name, message.from_user.id)
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"🔠 **PREMIUM EMOJI CHEKLOVI** 🚫\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🚫 {mention}, bir xabarda 5 tadan ortiq animatsiyali Premium emoji yuborish taqiqlangan!\n"
+                        f"⚡️ Chat tinchligi va a'zolarga noqulaylik tug'dirmaslik maqsadida xabaringiz o'chirildi."
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify, 60))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="Haddan tashqari Premium Emoji",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason=f"{custom_emoji_count} ta animatsiyali emoji ishlatildi",
+                ))
                 return
 
     # 🤖 2.2 Anti-Inline Bot (Yashirin botlar orqali reklama yuborish taqiqi)
@@ -794,6 +995,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 parse_mode="Markdown",
             )
             asyncio.create_task(auto_delete_notification(notify, 60))
+            asyncio.create_task(send_audit_log(
+                bot=bot,
+                chat_id=message.chat.id,
+                chat_title=message.chat.title or "Guruh",
+                event_title="Chet el (Arab/Sharq) Spambot",
+                user_name=message.from_user.full_name if message.from_user else "Spambot",
+                user_id=message.from_user.id if message.from_user else None,
+                reason="Yot yozuvlar (arabcha/xitoycha/yaponcha/korescha) aniqlandi",
+                snippet=text_to_check,
+            ))
             return
 
     # 2.4 Mass-Mention (Ommaviy @Tag spam hujumi filtri)
@@ -830,6 +1041,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     parse_mode="Markdown",
                 )
                 asyncio.create_task(auto_delete_notification(notify, 60))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="Ommaviy @Mention Hujumi",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason=f"Bir xabarda {mention_count} ta a'zo teglangan (2 soat MUTE)",
+                    snippet=raw_text,
+                ))
                 return
 
     # 2.5 Anti-Caps Lock (Katta harflar bilan baqirib yozish filtri)
@@ -1159,6 +1380,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                             parse_mode="Markdown",
                         )
                         asyncio.create_task(auto_delete_notification(notify_mute, 60))
+                        asyncio.create_task(send_audit_log(
+                            bot=bot,
+                            chat_id=message.chat.id,
+                            chat_title=message.chat.title or "Guruh",
+                            event_title="So'kinish / 24s MUTE",
+                            user_name=message.from_user.full_name,
+                            user_id=message.from_user.id,
+                            reason=f"So'kinish takrorlangani sababli 24 soatga MUTE berildi ({warn_cnt}/{MAX_WARNS})",
+                            snippet=text,
+                        ))
                         return
                     except Exception:
                         pass
@@ -1175,6 +1406,16 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     parse_mode="Markdown",
                 )
                 asyncio.create_task(auto_delete_notification(notify, 60))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="So'kinish / Haqorat",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason=f"Nojo'ya so'z ishlatildi (Ogohlantirish: {warn_cnt}/{MAX_WARNS})",
+                    snippet=text,
+                ))
                 return
             else:
                 await message.reply(
@@ -1249,7 +1490,17 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                             ),
                             parse_mode="Markdown",
                         )
-                        asyncio.create_task(auto_delete_notification(notify_mute))
+                        asyncio.create_task(auto_delete_notification(notify_mute, 60))
+                        asyncio.create_task(send_audit_log(
+                            bot=bot,
+                            chat_id=message.chat.id,
+                            chat_title=message.chat.title or "Guruh",
+                            event_title="Havola Tarqatish / 24s MUTE",
+                            user_name=message.from_user.full_name,
+                            user_id=message.from_user.id,
+                            reason=f"Ruxsatsiz havola takrorlangani sababli 24 soatga MUTE berildi ({warn_cnt}/{MAX_WARNS})",
+                            snippet=text,
+                        ))
                         return
                     except Exception:
                         pass
@@ -1265,7 +1516,17 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     ),
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_notification(notify))
+                asyncio.create_task(auto_delete_notification(notify, 60))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="Ruxsatsiz Havola (Link)",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason=f"Havola / Reklama aniqlandi (Ogohlantirish: {warn_cnt}/{MAX_WARNS})",
+                    snippet=text,
+                ))
                 return
             else:
                 # Bot admin bo'lmasa — reklama tarqatganga ogohlantirish beradi va adminlik so'raydi!
@@ -1343,7 +1604,17 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                             ),
                             parse_mode="Markdown",
                         )
-                        asyncio.create_task(auto_delete_notification(notify_mute))
+                        asyncio.create_task(auto_delete_notification(notify_mute, 60))
+                        asyncio.create_task(send_audit_log(
+                            bot=bot,
+                            chat_id=message.chat.id,
+                            chat_title=message.chat.title or "Guruh",
+                            event_title="Spam / 24s MUTE",
+                            user_name=message.from_user.full_name,
+                            user_id=message.from_user.id,
+                            reason=f"Spam takrorlangani sababli 24 soatga MUTE berildi ({warn_cnt}/{MAX_WARNS})",
+                            snippet=text,
+                        ))
                         return
                     except Exception:
                         pass
@@ -1358,7 +1629,17 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     ),
                     parse_mode="Markdown",
                 )
-                asyncio.create_task(auto_delete_notification(notify))
+                asyncio.create_task(auto_delete_notification(notify, 60))
+                asyncio.create_task(send_audit_log(
+                    bot=bot,
+                    chat_id=message.chat.id,
+                    chat_title=message.chat.title or "Guruh",
+                    event_title="Spam / Reklama So'zlari",
+                    user_name=message.from_user.full_name,
+                    user_id=message.from_user.id,
+                    reason=f"Taqiqlangan spam/reklama aniqlandi (Ogohlantirish: {warn_cnt}/{MAX_WARNS})",
+                    snippet=text,
+                ))
                 return
             else:
                 # Bot admin bo'lmasa — reklama tarqatganga javob yozadi va adminlik so'raydi!
