@@ -207,12 +207,15 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
         user_invites = await db.get_user_invites(message.chat.id, user_id) if user_id else 0
         if current > 0:
             left = max(0, current - user_invites)
+            percent = min(100, int(round((user_invites / current) * 100)))
+            bar = make_progress_bar(percent)
             await message.reply(
                 f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📌 Guruhda erkin yozish uchun har bir a'zo kamida **{current}** ta odam qo'shishi shart.\n\n"
-                f"├ 📊 Siz qo'shgan a'zolar: **{user_invites} / {current}** ta\n"
-                f"└ ➕ Qolgan: **{left}** ta yangi a'zo\n\n"
+                f"📌 Guruhda erkin yozish uchun har bir a'zo kamida **{current} ta** odam qo'shishi shart.\n\n"
+                f"├ 📊 Siz qo'shgan a'zolar: **{user_invites} / {current} ta ({percent}%)**\n"
+                f"├ 📈 Jarayon: {bar} **{percent}%**\n"
+                f"└ ➕ Qolgan: **{left} ta** yangi a'zo\n\n"
                 f"💡 Takliflaringizni to'liq ko'rish uchun: `/takliflarim`",
                 parse_mode="Markdown",
             )
@@ -1156,23 +1159,33 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
     raw = call.data.replace("toggle_", "")
     group = await db.get_or_create_group(call.message.chat.id)
 
-    if raw in ("block_stickers", "block_voice", "anti_inline_bot"):
-        setting_key = raw
-        current_val = group.get(setting_key, 0)
-    elif raw == "auto_approve":
-        setting_key = "auto_approve_joins"
+    if raw == "invites":
+        setting_key = "invites_enabled"
         current_val = group.get(setting_key, 1)
-    elif raw in ("night_mode", "anti_flood", "anti_arabic"):
-        setting_key = raw + "_enabled"
-        current_val = group.get(setting_key, 0 if raw != "anti_flood" else 1)
+        new_val = 0 if current_val == 1 else 1
+        if new_val == 1 and int(group.get("min_invites") or 0) <= 0:
+            await db.set_min_invites(call.message.chat.id, 5)
+            group["min_invites"] = 5
+        else:
+            await db.update_group_setting(call.message.chat.id, setting_key, new_val)
+        group[setting_key] = new_val
     else:
-        setting_key = raw + "_enabled"
-        current_val = group.get(setting_key, 1)
+        if raw in ("block_stickers", "block_voice", "anti_inline_bot"):
+            setting_key = raw
+            current_val = group.get(setting_key, 0)
+        elif raw == "auto_approve":
+            setting_key = "auto_approve_joins"
+            current_val = group.get(setting_key, 1)
+        elif raw in ("night_mode", "anti_flood", "anti_arabic"):
+            setting_key = raw + "_enabled"
+            current_val = group.get(setting_key, 0 if raw != "anti_flood" else 1)
+        else:
+            setting_key = raw + "_enabled"
+            current_val = group.get(setting_key, 1)
 
-    new_val = 0 if current_val == 1 else 1
-
-    await db.update_group_setting(call.message.chat.id, setting_key, new_val)
-    group[setting_key] = new_val
+        new_val = 0 if current_val == 1 else 1
+        await db.update_group_setting(call.message.chat.id, setting_key, new_val)
+        group[setting_key] = new_val
 
     await call.message.edit_reply_markup(reply_markup=get_settings_keyboard(group))
     await call.answer("Sozlama yangilandi! ✅")

@@ -24,9 +24,13 @@ from config import (
 )
 from database.db import db
 from filters.admin_filter import is_admin, can_bot_delete
+from services.ui_utils import make_progress_bar
 
 router = Router(name="moderation")
 logger = logging.getLogger(__name__)
+
+# Taklif ogohlantirishlari kesh: {(chat_id, user_id): timestamp}
+INVITE_WARN_CACHE: dict[tuple[int, int], float] = {}
 
 # Linklarni aniqlash regexi (har qanday domen, vebsayt, Telegram havolasi va @username)
 LINK_PATTERN = re.compile(
@@ -604,13 +608,15 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             return
 
     # 4. Majburiy a'zo qo'shish talabi (Invites restriction)
-    min_invites = group.get("min_invites", 0)
-    invites_enabled = group.get("invites_enabled", 1)
+    min_invites = int(group.get("min_invites") or 0)
+    invites_enabled = int(group.get("invites_enabled") if group.get("invites_enabled") is not None else 1)
 
     if invites_enabled == 1 and min_invites > 0 and message.from_user:
         user_invites = await db.get_user_invites(message.chat.id, message.from_user.id)
         if user_invites < min_invites:
             left_needed = min_invites - user_invites
+            percent = min(100, int(round((user_invites / min_invites) * 100)))
+            bar = make_progress_bar(percent)
             mention = safe_mention(message.from_user.full_name, message.from_user.id)
 
             deleted = False
@@ -621,23 +627,30 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 deleted = False
 
             if deleted:
-                # Bot admin bo'lsa: xabarni o'chirib, a'zo qo'shish kerakligi haqida ogohlantirish yuboradi
-                notify = await bot.send_message(
-                    chat_id=message.chat.id,
-                    text=(
-                        f"👥 **MAJBURIY TAKLIF TALABI** 👥\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"🚫 {mention}, siz guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
-                        f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites}** ta\n"
-                        f"➕ **Yana kerak:** **{left_needed}** ta yangi a'zo\n\n"
-                        f"💡 Do'stlaringizni guruhga qo'shing va erkin suhbatda bo'ling! 😊"
-                    ),
-                    parse_mode="Markdown",
-                )
-                asyncio.create_task(auto_delete_notification(notify))
+                # Anti-spam: takroriy ogohlantirishlarni 4 soniya ichida qayta yubormaslik (lekin xabar o'chadi)
+                now_t = asyncio.get_event_loop().time()
+                warn_key = (message.chat.id, message.from_user.id)
+                last_warn = INVITE_WARN_CACHE.get(warn_key, 0.0)
+                if now_t - last_warn > 4.0:
+                    INVITE_WARN_CACHE[warn_key] = now_t
+                    notify = await bot.send_message(
+                        chat_id=message.chat.id,
+                        text=(
+                            f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"🚫 {mention}, siz guruhda yozish uchun kamida **{min_invites} ta** a'zo qo'shishingiz kerak!\n\n"
+                            f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites} ta ({percent}%)**\n"
+                            f"📈 **Jarayon:** {bar} **{percent}%**\n"
+                            f"➕ **Yozish huquqi uchun yana:** **{left_needed} ta** a'zo qo'shishingiz kerak!\n\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"💡 Guruhga do'stlaringizni taklif qiling va suhbatga qo'shiling! 😊"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    asyncio.create_task(auto_delete_notification(notify, 15))
                 return
             else:
-                # Bot admin bo'lmasa: xabarni o'chirmasdan a'zo qo'shish kerakligi haqida xabar yuboradi
+                # Bot admin bo'lmasa: xabarni o'chira olmagani sababli ogohlantiradi
                 bot_info = await bot.get_me()
                 admin_req_kb = InlineKeyboardMarkup(
                     inline_keyboard=[
@@ -651,17 +664,19 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 )
                 warn_inv = await message.reply(
                     text=(
-                        f"👥 **MAJBURIY TAKLIF TALABI** 👥\n"
+                        f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"🚫 {mention}, guruhda yozish uchun kamida **{min_invites}** ta odam qo'shishingiz kerak!\n\n"
-                        f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites}** ta\n"
-                        f"➕ **Yana kerak:** **{left_needed}** ta yangi a'zo\n\n"
-                        f"🤖 **Administratorlar diqqatiga:** Bot ushbu qoidani to'liq nazorat qilishi va a'zo qo'shmaganlarning xabarlarini avtomatik o'chirib turishi uchun botga guruhda **Administrator (Admin)** huquqini bering! 🛡"
+                        f"🚫 {mention}, guruhda yozish uchun kamida **{min_invites} ta** a'zo qo'shishingiz kerak!\n\n"
+                        f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites} ta ({percent}%)**\n"
+                        f"📈 **Jarayon:** {bar} **{percent}%**\n"
+                        f"➕ **Yozish huquqi uchun yana:** **{left_needed} ta** a'zo qo'shishingiz kerak!\n\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🤖 **Administratorlar diqqatiga:** Bot ushbu qoidani to'liq nazorat qilishi va a'zo qo'shmaganlarning xabarlarini avtomatik o'chirib turishi uchun botga guruhda **Administrator (Xabarlarni o'chirish)** huquqini bering! 🛡"
                     ),
                     parse_mode="Markdown",
                     reply_markup=admin_req_kb,
                 )
-                asyncio.create_task(auto_delete_notification(warn_inv))
+                asyncio.create_task(auto_delete_notification(warn_inv, 15))
                 return
 
     # 5. Media filtrlari (Stiker/GIF va Ovozli/Dumaloq video cheklovi)

@@ -193,6 +193,14 @@ class Database:
                 await conn.execute("UPDATE groups SET auto_approve_joins = 1 WHERE auto_approve_joins IS NULL")
             except Exception:
                 pass
+            try:
+                await conn.execute("UPDATE groups SET min_invites = 0 WHERE min_invites IS NULL")
+            except Exception:
+                pass
+            try:
+                await conn.execute("UPDATE groups SET invites_enabled = 1 WHERE invites_enabled IS NULL")
+            except Exception:
+                pass
             await conn.commit()
 
     # ── Guruh sozlamalari ─────────────────────────────────────────────

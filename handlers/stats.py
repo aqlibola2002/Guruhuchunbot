@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from database.db import db
+from services.ui_utils import make_progress_bar
 
 router = Router(name="stats")
 
@@ -104,27 +105,37 @@ async def cmd_takliflarim(message: Message) -> None:
         return
 
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
-    min_inv = group.get("min_invites", 0)
+    min_inv = int(group.get("min_invites") or 0)
 
     # Agar boshqa bir a'zoning xabariga Reply qilingan bo'lsa
     if message.reply_to_message and message.reply_to_message.from_user:
         target = message.reply_to_message.from_user
         user_invites = await db.get_user_invites(message.chat.id, target.id)
 
-        status_text = ""
         if min_inv > 0:
+            percent = min(100, int(round((user_invites / min_inv) * 100)))
+            bar = make_progress_bar(percent)
             if user_invites >= min_inv:
-                status_text = "\n✅ **Ushbu foydalanuvchi guruh talabini to'liq bajargan!**"
+                status_text = (
+                    f"├ 📊 **Takliflar:** **{user_invites} / {min_inv} ta ({percent}%)**\n"
+                    f"├ 📈 **Jarayon:** {bar} **{percent}%**\n"
+                    f"└ ✅ **Holati:** Guruh talabini to'liq bajargan (yozishga ruxsat) ✨"
+                )
             else:
                 left = min_inv - user_invites
-                status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stini qo'shishi kerak."
+                status_text = (
+                    f"├ 📊 **Takliflar:** **{user_invites} / {min_inv} ta ({percent}%)**\n"
+                    f"├ 📈 **Jarayon:** {bar} **{percent}%**\n"
+                    f"└ ⚠️ **Holati:** Yozish uchun yana **{left} ta** a'zo qo'shishi kerak"
+                )
+        else:
+            status_text = f"└ ➕ **Qo'shgan a'zolari:** **{user_invites} ta** (Guruhda cheklov yo'q)"
 
         await message.reply(
             f"👤 **A'ZONING TAKLIF HISOBI** 👥\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **A'zo:** {target.full_name}\n"
-            f"➕ **Qo'shgan a'zolari:** `{user_invites}` ta\n"
-            f"🎯 **Guruh talabi:** `{min_inv}` ta{status_text}",
+            f"{status_text}",
             parse_mode="Markdown",
         )
         return
@@ -137,20 +148,30 @@ async def cmd_takliflarim(message: Message) -> None:
 
     user_name = message.from_user.full_name if (message.from_user and message.from_user.full_name) else "Foydalanuvchi"
     user_invites = await db.get_user_invites(message.chat.id, user_id)
-    status_text = ""
     if min_inv > 0:
+        percent = min(100, int(round((user_invites / min_inv) * 100)))
+        bar = make_progress_bar(percent)
         if user_invites >= min_inv:
-            status_text = "\n✅ **Siz guruh talabini to'liq bajargansiz, bemalol yoza olasiz!**"
+            status_text = (
+                f"├ 📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_inv} ta ({percent}%)**\n"
+                f"├ 📈 **Jarayon:** {bar} **{percent}%**\n"
+                f"└ ✅ **Holati:** Guruh talabini to'liq bajargansiz, bemalol yoza olasiz! 🎉"
+            )
         else:
             left = min_inv - user_invites
-            status_text = f"\n⚠️ Guruhda yozish uchun yana **{left}** ta do'stingizni taklif qilishingiz kerak!"
+            status_text = (
+                f"├ 📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_inv} ta ({percent}%)**\n"
+                f"├ 📈 **Jarayon:** {bar} **{percent}%**\n"
+                f"└ ⚠️ **Holati:** Guruhda yozish uchun yana **{left} ta** do'stingizni taklif qiling!"
+            )
+    else:
+        status_text = f"└ ➕ **Siz taklif qilgan a'zolar:** **{user_invites} ta** (Cheklov o'rnatilmagan)"
 
     await message.reply(
         f"📊 **SIZNING TAKLIF HISOBINGIZ** 👥\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 **Foydalanuvchi:** {user_name}\n"
-        f"➕ **Siz taklif qilgan a'zolar:** `{user_invites}` ta\n"
-        f"🎯 **Guruh talabi:** `{min_inv}` ta{status_text}\n\n"
+        f"{status_text}\n\n"
         f"💡 *Boshqa a'zoning takliflarini bilish uchun uning xabariga Reply qilib `/takliflarim` deb yozing!*",
         parse_mode="Markdown",
     )
@@ -171,10 +192,13 @@ async def cmd_top_invites(message: Message) -> None:
         )
         return
 
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    min_inv = int(group.get("min_invites") or 0)
+
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
     text = (
         f"🥇 **TOP TAKLIFCHILAR (TOP-10)** 👥\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🏛 **Guruh:** «{message.chat.title}»\n\n"
     )
 
@@ -182,7 +206,13 @@ async def cmd_top_invites(message: Message) -> None:
         medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
         name = u["full_name"] or "Foydalanuvchi"
         username_part = f" (@{u['username']})" if u["username"] else ""
-        text += f"{medal} **{name}**{username_part} — `{u['invite_count']}` ta a'zo qo'shgan\n"
+        cnt = u["invite_count"]
+
+        if min_inv > 0:
+            pct = min(100, int(round((cnt / min_inv) * 100)))
+            text += f"{medal} **{name}**{username_part} — **{cnt} ta** ({pct}%)\n   {make_progress_bar(pct, length=8)}\n"
+        else:
+            text += f"{medal} **{name}**{username_part} — **{cnt} ta** a'zo qo'shgan\n"
 
     text += "\n💡 *Guruhga do'stlaringizni taklif qiling va reytingda 1-o'ringa chiqing!*\nO'z hisobingiz: `/takliflarim`"
     await message.reply(text, parse_mode="Markdown")
