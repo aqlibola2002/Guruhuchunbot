@@ -558,7 +558,7 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
 
 
 # ── /chekla [ relp 10m|2h|1d] ──────────────────────────────────────
-@router.message(Command("chekla", "yopish", "mute", ignore_case=True))
+@router.message(Command("chekla", "mute", ignore_case=True))
 async def cmd_mute(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
@@ -621,6 +621,53 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         await message.reply(f"❌ Xatolik yuz berdi: {e}\n(Bot guruhda admin ekanligiga va 'Restrict members' huquqi borligiga ishonch hosil qiling).")
 
 
+# ── /unmute [yozish cheklovini bekor qilish] ─────────────────────────
+@router.message(Command("unmute", "och_yozish", "gapir", ignore_case=True))
+async def cmd_unmute(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    target = await resolve_target(message)
+    if target.error:
+        await message.reply(
+            "🔊 **Yozish cheklovini olib tashlash (Unmute):**\n\n"
+            "• Xabarga **Reply** qilib: `/unmute`\n"
+            "• Yoki `@username` orqali: `/unmute @foydalanuvchi`\n"
+            "• Yoki Telegram **ID** orqali: `/unmute 123456789`",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        await bot.restrict_chat_member(
+            chat_id=message.chat.id,
+            user_id=target.user_id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+            ),
+        )
+        await message.reply(
+            f"🔊 **YOZISH CHEKLOVI OLIB TASHLANDI (UNMUTE)!** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"✨ Endi guruhda bemalol xabar yoza oladi.\n\n"
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await message.reply(f"❌ Unmute qilishda xatolik: {e}")
+
+
 # ── /hayda [bloklash @ id yoki relp] ─────────────────────────────────
 @router.message(Command("hayda", "haydash", "ban", ignore_case=True))
 async def cmd_ban(message: Message, bot: Bot) -> None:
@@ -665,6 +712,46 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         )
     except Exception as e:
         await message.reply(f"❌ Ban qilishda xatolik: {e}")
+
+
+# ── /unban [bandan chiqarish] ────────────────────────────────────────
+@router.message(Command("unban", "kechir_ban", "qaytar", ignore_case=True))
+async def cmd_unban(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    target = await resolve_target(message)
+    if target.error:
+        await message.reply(
+            "🕊 **Foydalanuvchini bandan chiqarish (Unban):**\n\n"
+            "• `@username` orqali: `/unban @foydalanuvchi`\n"
+            "• Yoki Telegram **ID** orqali: `/unban 123456789`",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        await bot.unban_chat_member(
+            chat_id=message.chat.id,
+            user_id=target.user_id,
+            only_if_banned=True,
+        )
+        await message.reply(
+            f"🕊 **FOYDALANUVCHI BANDAN CHIQARILDI (UNBAN)!** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"🚪 Endi guruhga qayta qo'shilishi mumkin.\n\n"
+            f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await message.reply(f"❌ Bandan chiqarishda xatolik: {e}")
 
 
 # Helper: xabarlarni guruhlab (chunk) tez va xavfsiz o'chirish
@@ -1144,6 +1231,18 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                text=f"📢 Kanal nomidan yozish: {mark(group.get('anti_channel_enabled', 1))}",
+                callback_data="toggle_anti_channel",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔠 Katta harflar (Caps Lock): {mark(group.get('anti_caps_enabled', 0))}",
+                callback_data="toggle_anti_caps",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text=f"👋 Kutib olish: {mark(group.get('welcome_enabled', 1))}",
                 callback_data="toggle_welcome",
             )
@@ -1211,9 +1310,12 @@ async def callback_toggle_setting(call: CallbackQuery, bot: Bot) -> None:
         elif raw == "auto_approve":
             setting_key = "auto_approve_joins"
             current_val = group.get(setting_key, 1)
-        elif raw in ("night_mode", "anti_flood", "anti_arabic"):
+        elif raw in ("night_mode", "anti_arabic", "anti_caps"):
             setting_key = raw + "_enabled"
-            current_val = group.get(setting_key, 0 if raw != "anti_flood" else 1)
+            current_val = group.get(setting_key, 0)
+        elif raw in ("anti_flood", "anti_channel"):
+            setting_key = raw + "_enabled"
+            current_val = group.get(setting_key, 1)
         else:
             setting_key = raw + "_enabled"
             current_val = group.get(setting_key, 1)
@@ -2123,6 +2225,156 @@ async def cmd_clear_banned_words(message: Message, bot: Bot) -> None:
         f"👮‍♂️ Admin: {get_admin_name(message)}",
         parse_mode="Markdown",
     )
+
+
+# ── /antikanal [on|off] (Kanal nomidan yozishni boshqarish) ───────────
+@router.message(Command("antikanal", "antichannel", ignore_case=True))
+async def cmd_anti_channel(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split()
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    current_val = group.get("anti_channel_enabled", 1)
+
+    if len(parts) < 2:
+        st = "YOQILGAN ✅" if current_val == 1 else "O'CHIRILGAN ❌"
+        await message.reply(
+            f"📢 **ANTI-KANAL HIMOYA TIZIMI** 🛡\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"⚡️ Joriy holat: **{st}**\n\n"
+            f"• Yoqish: `/antikanal on`\n"
+            f"• O'chirish: `/antikanal off`\n\n"
+            f"💡 *Ushbu tizim yoqilgan bo'lsa, begona a'zolar kanal nomidan anonim yozishganda, bot ularning xabarlarini o'chiradi va kanalni guruhda bloklaydi.*",
+            parse_mode="Markdown",
+        )
+        return
+
+    sub = parts[1].strip().lower()
+    if sub in ("on", "yoq", "1", "start"):
+        await db.update_group_setting(message.chat.id, "anti_channel_enabled", 1)
+        await message.reply(
+            f"✅ **ANTI-KANAL HIMOYA TIZIMI YOQILDI!** 📢\n\n"
+            f"Endi hech kim kanal nomidan guruhda yozolmaydi. Faqat shaxsiy profil orqali ruxsat beriladi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    elif sub in ("off", "ochir", "0", "stop"):
+        await db.update_group_setting(message.chat.id, "anti_channel_enabled", 0)
+        await message.reply(
+            f"⚠️ **ANTI-KANAL HIMOYA TIZIMI O'CHIRILDI!**\n\n"
+            f"A'zolarga kanal nomidan yozishga ruxsat berildi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply("Foydalanish: `/antikanal on` yoki `/antikanal off`", parse_mode="Markdown")
+
+
+# ── /caps [on|off] (Katta harflar / CapsLock filtri) ─────────────────
+@router.message(Command("caps", "anticaps", ignore_case=True))
+async def cmd_anti_caps(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_admin(bot, message.chat.id, user_id, message=message):
+        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
+        return
+
+    parts = (message.text or "").split()
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    current_val = group.get("anti_caps_enabled", 0)
+
+    if len(parts) < 2:
+        st = "YOQILGAN ✅" if current_val == 1 else "O'CHIRILGAN ❌"
+        await message.reply(
+            f"🔠 **ANTI-CAPS LOCK FILTRI** 🛡\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"⚡️ Joriy holat: **{st}**\n\n"
+            f"• Yoqish: `/caps on`\n"
+            f"• O'chirish: `/caps off`\n\n"
+            f"💡 *Yoqilganda, faqat KATTA HARFLAR bilan baqirib spam yozgan a'zolarning xabarlari avtomatik o'chiriladi.*",
+            parse_mode="Markdown",
+        )
+        return
+
+    sub = parts[1].strip().lower()
+    if sub in ("on", "yoq", "1", "start"):
+        await db.update_group_setting(message.chat.id, "anti_caps_enabled", 1)
+        await message.reply(
+            f"✅ **ANTI-CAPS LOCK FILTRI YOQILDI!** 🔠\n\n"
+            f"Katta harflar bilan baqirib yozish taqiqlandi.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    elif sub in ("off", "ochir", "0", "stop"):
+        await db.update_group_setting(message.chat.id, "anti_caps_enabled", 0)
+        await message.reply(
+            f"⚠️ **ANTI-CAPS LOCK FILTRI O'CHIRILDI!**\n\n"
+            f"A'zolar katta harflarda yozishlari mumkin.\n\n"
+            f"👮‍♂️ Admin: {get_admin_name(message)}",
+            parse_mode="Markdown",
+        )
+    else:
+        await message.reply("Foydalanish: `/caps on` yoki `/caps off`", parse_mode="Markdown")
+
+
+# ── /xavfsizlik (Guruhning to'liq kiber-himoya va nazorat auditi) ──────
+@router.message(Command("xavfsizlik", "audit", "himoya", ignore_case=True))
+async def cmd_security_audit(message: Message, bot: Bot) -> None:
+    if message.chat.type in ("private",):
+        await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    min_inv = int(group.get("min_invites") or 0)
+    inv_on = group.get("invites_enabled", 1) == 1 and min_inv > 0
+
+    def s_icon(val: int) -> str:
+        return "🟢 FAOL" if val == 1 else "⚪️ O'chirilgan"
+
+    active_shields = sum([
+        1,  # Virus/APK himoyasi doim faol
+        1 if group.get("antilink_enabled", 1) == 1 else 0,
+        1 if group.get("antispam_enabled", 1) == 1 else 0,
+        1 if group.get("antiforward_enabled", 1) == 1 else 0,
+        1 if group.get("anti_flood_enabled", 1) == 1 else 0,
+        1 if group.get("anti_channel_enabled", 1) == 1 else 0,
+        1 if group.get("anti_arabic_enabled", 0) == 1 else 0,
+        1 if group.get("anti_caps_enabled", 0) == 1 else 0,
+        1 if inv_on else 0,
+    ])
+    total_shields = 9
+    score = int(round((active_shields / total_shields) * 100))
+
+    audit_text = (
+        f"🛡 **«{message.chat.title}» GURUHI XAVFSIZLIK AUDITI** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🏆 **Xavfsizlik indeksi:** **{score}%** (Yuqori daraja)\n"
+        f"⚡️ **Faol qalqonlar:** **{active_shields} / {total_shields} ta**\n\n"
+        f"📋 **HIMOYA TIZIMLARI STATUSI:**\n"
+        f"├ 🦠 APK & Virus yo'q qiluvchi: 🟢 DOIM FAOL\n"
+        f"├ 🔗 Begona havola va reklamalar: {s_icon(group.get('antilink_enabled', 1))}\n"
+        f"├ 🔄 Forward xabarlar filtri: {s_icon(group.get('antiforward_enabled', 1))}\n"
+        f"├ ⚡️ Anti-Flood (Spam oqimi): {s_icon(group.get('anti_flood_enabled', 1))}\n"
+        f"├ 📢 Anti-Kanal (Anonim kanallar): {s_icon(group.get('anti_channel_enabled', 1))}\n"
+        f"├ 🈲 Anti-Raid / Arab botlar: {s_icon(group.get('anti_arabic_enabled', 0))}\n"
+        f"├ 🔠 Anti-Caps Lock (Baqirish): {s_icon(group.get('anti_caps_enabled', 0))}\n"
+        f"├ 🤬 So'kinish va haqorat: {s_icon(group.get('profanity_enabled', 1))}\n"
+        f"└ 👥 Majburiy a'zo talabi: {'🟢 ' + str(min_inv) + ' ta a\'zo' if inv_on else '⚪️ O\'chirilgan'}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 *Sozlamalarni interaktiv boshqarish uchun:* `/sozlamalar`\n"
+        f"👮‍♂️ *Guruh 24/7 avtomatik himoya ostida!* ✅"
+    )
+    await message.reply(audit_text, parse_mode="Markdown")
 
 
 

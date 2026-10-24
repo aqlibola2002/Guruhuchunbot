@@ -13,7 +13,7 @@ router = Router(name="faq")
 
 
 # ── /savollar [Guruhdagi avto-javoblar ro'yxati] ───────────────────
-@router.message(Command("savollar", "faqs", "faq", ignore_case=True))
+@router.message(Command("savollar", "faqs", "faq", "filtrlar", "filters", ignore_case=True))
 async def cmd_faqs_list(message: Message) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Ushbu buyruq faqat guruhlarda ishlaydi.")
@@ -22,29 +22,29 @@ async def cmd_faqs_list(message: Message) -> None:
     faqs = await db.get_all_faqs(message.chat.id)
     if not faqs:
         await message.reply(
-            "❓ **Guruhda avto-javoblar hali mavjud emas.**\n\n"
+            "❓ **Guruhda avto-javoblar (filtrlar) hali mavjud emas.**\n\n"
             "Adminlar yangi avto-javob qo'shishi mumkin:\n"
-            "`/savolqoshish kalit_so'z = javob matni`\n\n"
+            "`/filtrqosh [kalit_so'z] = [javob matni]` yoki `/savolqoshish [kalit] = [javob]`\n\n"
             "Masalan:\n"
-            "`/savolqoshish manzil = Bizning manzil: Toshkent shahar, Chilonzor tumani`",
+            "`/filtrqosh manzil = Bizning manzil: Toshkent shahar, Chilonzor tumani`",
             parse_mode="Markdown",
         )
         return
 
-    text = f"❓ **'{message.chat.title}' guruhining avto-javoblari (FAQ):**\n\n"
+    text = f"❓ **'{message.chat.title}' guruhining avto-javoblari (Filtrlar):**\n\n"
     for idx, f in enumerate(faqs, 1):
         text += f"**{idx}.** `{f['keyword']}` ➔ _{f['answer']}_\n"
 
     text += (
-        "\n💡 *A'zolar ushbu kalit so'zlarni xabarda yozishganda, bot avtomatik javob beradi.*\n"
-        "➕ **Qo'shish:** `/savolqoshish so'z = javob`\n"
-        "➖ **O'chirish:** `/savolochir so'z`"
+        "\n💡 *A'zolar ushbu kalit so'zlarni yozganda, bot avtomatik javob beradi.*\n"
+        "➕ **Qo'shish:** `/filtrqosh so'z = javob`\n"
+        "➖ **O'chirish:** `/filtrochir so'z`"
     )
     await message.reply(text, parse_mode="Markdown")
 
 
 # ── /savolqoshish [kalit = javob] ─────────────────────────────────
-@router.message(Command("savolqoshish", "addfaq", ignore_case=True))
+@router.message(Command("savolqoshish", "addfaq", "filtrqosh", "filter", ignore_case=True))
 async def cmd_add_faq(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         return
@@ -58,10 +58,10 @@ async def cmd_add_faq(message: Message, bot: Bot) -> None:
     if len(raw_text) < 2 or "=" not in raw_text[1]:
         await message.reply(
             "📝 **Yangi avto-javob qo'shish formati:**\n\n"
-            "`/savolqoshish [kalit so'z] = [javob matni]`\n\n"
+            "`/filtrqosh [kalit so'z] = [javob matni]`\n\n"
             "Masalan:\n"
-            "`/savolqoshish narxlar = Xizmat narxlari bilan @kanalimiz orqali tanishishingiz mumkin.`\n"
-            "`/savolqoshish qayerda = Biz Chilonzorda joylashganmiz.`",
+            "`/filtrqosh narxlar = Xizmat narxlari bilan @kanalimiz orqali tanishishingiz mumkin.`\n"
+            "`/filtrqosh qayerda = Biz Chilonzorda joylashganmiz.`",
             parse_mode="Markdown",
         )
         return
@@ -87,7 +87,7 @@ async def cmd_add_faq(message: Message, bot: Bot) -> None:
 
 
 # ── /savolochir [kalit] ───────────────────────────────────────────
-@router.message(Command("savolochir", "delfaq", ignore_case=True))
+@router.message(Command("savolochir", "delfaq", "filtrochir", "delfilter", ignore_case=True))
 async def cmd_remove_faq(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         return

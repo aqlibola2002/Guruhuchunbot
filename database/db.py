@@ -25,6 +25,8 @@ class Database:
                     welcome_enabled INTEGER DEFAULT 1,
                     ai_enabled INTEGER DEFAULT 1,
                     scheduled_enabled INTEGER DEFAULT 1,
+                    anti_channel_enabled INTEGER DEFAULT 1,
+                    anti_caps_enabled INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -233,6 +235,14 @@ class Database:
                 pass
             try:
                 await conn.execute("ALTER TABLE groups ADD COLUMN captcha_enabled INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_channel_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN anti_caps_enabled INTEGER DEFAULT 0")
             except Exception:
                 pass
             await conn.commit()

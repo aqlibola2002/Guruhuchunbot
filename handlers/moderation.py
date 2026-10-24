@@ -275,6 +275,55 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                 pass
             return
 
+    # 0.1 Anti-Channel (Kanal nomidan yozish taqiqi)
+    if group.get("anti_channel_enabled", 1) == 1 and message.sender_chat and not message.from_user:
+        if message.sender_chat.id != message.chat.id:
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            except Exception:
+                pass
+            try:
+                await bot.ban_chat_sender_chat(chat_id=message.chat.id, sender_chat_id=message.sender_chat.id)
+            except Exception:
+                pass
+            ch_title = (message.sender_chat.title or "Kanal").replace("*", "").replace("`", "").replace("_", " ")
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"📢 **KANAL NOMIDAN YOZISH TAQIQLANGAN!** 🚫\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"«{ch_title}» kanali nomidan xabar yozish guruhda taqiqlangan!\n"
+                    f"⚡️ Ushbu kanal guruhda yozishdan bloklandi.\n"
+                    f"💡 Iltimos, faqat o'z shaxsiy profilingiz orqali muloqot qiling."
+                ),
+                parse_mode="Markdown",
+            )
+            asyncio.create_task(auto_delete_notification(notify, 60))
+            return
+
+    # 0.2 Ismda reklama / havola tekshiruvi (Anti-Name Spam)
+    if message.from_user and not user_is_admin:
+        user_full_name = message.from_user.full_name or ""
+        if LINK_PATTERN.search(user_full_name):
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            except Exception:
+                pass
+            mention = safe_mention(message.from_user.first_name, message.from_user.id)
+            notify = await bot.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"👤 **ISMDAGI REKLAMA ANIQLANDI** 🛡\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🚫 {mention}, profilingiz ismida reklama havolasi mavjud!\n"
+                    f"⚠️ Guruh xavfsizligi yuzasidan xabaringiz o'chirildi.\n"
+                    f"💡 Iltimos, ismingizdagi havola yoki @username ni olib tashlang."
+                ),
+                parse_mode="Markdown",
+            )
+            asyncio.create_task(auto_delete_notification(notify, 60))
+            return
+
     # 1. Faollikni hisoblash (xabarlar sonini yozib borish) va xabar ID sini saqlash
     if message.from_user:
         await db.record_user_message(
@@ -570,6 +619,67 @@ async def process_group_message(message: Message, bot: Bot) -> None:
             )
             asyncio.create_task(auto_delete_notification(notify))
             return
+
+    # 2.4 Mass-Mention (Ommaviy @Tag spam hujumi filtri)
+    raw_text = message.text or message.caption or ""
+    if raw_text and not user_is_admin and message.from_user:
+        entities = (message.entities or []) + (message.caption_entities or [])
+        mention_count = sum(1 for e in entities if e.type in ("mention", "text_mention"))
+        if mention_count >= 5 or len(re.findall(r"@[a-zA-Z0-9_]{4,}", raw_text)) >= 5:
+            if bot_can_delete_msg:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                until_date = datetime.now(timezone.utc) + timedelta(hours=2)
+                try:
+                    await bot.restrict_chat_member(
+                        chat_id=message.chat.id,
+                        user_id=message.from_user.id,
+                        permissions=ChatPermissions(can_send_messages=False),
+                        until_date=until_date,
+                    )
+                    await db.record_punishment(message.chat.id, "mute")
+                except Exception:
+                    pass
+                mention = safe_mention(message.from_user.full_name, message.from_user.id)
+                notify = await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"⚡️ **OMMAVIY MENTION SPAM ANIQLANDI** ⚡️\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🚫 {mention}, bir xabarda 5 tadan ortiq a'zolarni teglash (mention) taqiqlangan!\n"
+                        f"⏳ **2 soatga yozishdan cheklandingiz (MUTE).**"
+                    ),
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(auto_delete_notification(notify, 60))
+                return
+
+    # 2.5 Anti-Caps Lock (Katta harflar bilan baqirib yozish filtri)
+    if group.get("anti_caps_enabled", 0) == 1 and raw_text and not user_is_admin and message.from_user:
+        letters = [c for c in raw_text if c.isalpha()]
+        if len(letters) >= 8:
+            upper_count = sum(1 for c in letters if c.isupper())
+            if (upper_count / len(letters)) >= 0.70:
+                if bot_can_delete_msg:
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    mention = safe_mention(message.from_user.full_name, message.from_user.id)
+                    notify = await bot.send_message(
+                        chat_id=message.chat.id,
+                        text=(
+                            f"🔠 **KATTA HARFLAR TAQIQI (CAPS LOCK)** 🔠\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"🚫 {mention}, guruhda faqat katta harflar bilan baqirib yozish taqiqlangan!\n"
+                            f"💡 Iltimos, Caps Lock-ni o'chiring va odatiy kichik harflarda yozing."
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    asyncio.create_task(auto_delete_notification(notify, 60))
+                    return
 
     # 3. Forward (Uzatilgan) xabarlarni nazorat qilish va o'chirish (Anti-Forward)
     if group.get("antiforward_enabled", 1) == 1 and is_forwarded_message(message):
