@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 
 from database.db import db
 from filters.admin_filter import is_admin
-from services.ui_utils import make_progress_bar, get_level_title
+from services.ui_utils import make_progress_bar, get_level_title, escape_md, safe_mention, safe_reply
 
 router = Router(name="stats")
 LAST_REP_GIVEN: dict[tuple[int, int], float] = {}
@@ -40,10 +40,11 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
     if group.get("night_mode_enabled", 0):
         night_mode_text = f"🌙 Faol ({group.get('night_mode_start', '23:00')} - {group.get('night_mode_end', '07:00')})"
 
+    safe_title = escape_md(message.chat.title)
     text = (
         f"📊 **GURUH STATISTIKA DASHBOARDI** 📈\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🏛 **Guruh:** «{message.chat.title}»\n"
+        f"🏛 **Guruh:** «{safe_title}»\n"
         f"👥 **Jami a'zolar:** `{member_count}` nafar\n"
         f"💬 **Bugungi faollik:** `{stats['today_messages']}` ta xabar\n"
         f"📈 **Jami qayd etilgan xabarlar:** `{stats['total_messages']}` ta\n\n"
@@ -62,7 +63,7 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
         f"🏆 Faol a'zolar: `/reyting` | 🥇 Taklifchilar: `/toptaklif`"
     )
 
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 # ── /reyting (Eng faol yozuvchilar reytingi) ────────────────────────
@@ -73,9 +74,11 @@ async def cmd_top(message: Message) -> None:
         return
 
     top_users = await db.get_top_users(message.chat.id, limit=10)
+    safe_title = escape_md(message.chat.title)
     if not top_users:
-        await message.reply(
-            f"ℹ️ **'{message.chat.title}'** guruhida hali faollik yetarli emas.\n"
+        await safe_reply(
+            message,
+            f"ℹ️ **'{safe_title}'** guruhida hali faollik yetarli emas.\n"
             "Xabarlar yozilgach, reyting avtomatik shakllanadi!"
         )
         return
@@ -84,17 +87,17 @@ async def cmd_top(message: Message) -> None:
     text = (
         f"🏆 **ENG FAOL A'ZOLAR (TOP-10)** 💬\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🏛 **Guruh:** «{message.chat.title}»\n\n"
+        f"🏛 **Guruh:** «{safe_title}»\n\n"
     )
 
     for idx, u in enumerate(top_users):
         medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
-        name = u["full_name"] or "Foydalanuvchi"
-        username_part = f" (@{u['username']})" if u["username"] else ""
+        name = escape_md(u["full_name"]) or "Foydalanuvchi"
+        username_part = f" (@{escape_md(u['username'])})" if u["username"] else ""
         text += f"{medal} **{name}**{username_part} — `{u['message_count']}` ta xabar\n"
 
     text += "\n✨ *Guruhda samimiy suhbatlashib, reytingingizni oshirib boring!*"
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 # ── /takliflarim (A'zo qo'shganini hisoblash) ───────────────────────
@@ -134,12 +137,13 @@ async def cmd_takliflarim(message: Message) -> None:
         else:
             status_text = f"└ ➕ **Qo'shgan a'zolari:** **{user_invites} ta** (Guruhda cheklov yo'q)"
 
-        await message.reply(
+        safe_target_name = escape_md(target.full_name)
+        await safe_reply(
+            message,
             f"👤 **A'ZONING TAKLIF HISOBI** 👥\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **A'zo:** {target.full_name}\n"
+            f"👤 **A'zo:** {safe_target_name}\n"
             f"{status_text}",
-            parse_mode="Markdown",
         )
         return
 
@@ -149,7 +153,7 @@ async def cmd_takliflarim(message: Message) -> None:
         await message.reply("Takliflarni hisoblash uchun profilingizdan yozing.")
         return
 
-    user_name = message.from_user.full_name if (message.from_user and message.from_user.full_name) else "Foydalanuvchi"
+    user_name = escape_md(message.from_user.full_name if (message.from_user and message.from_user.full_name) else "Foydalanuvchi")
     user_invites = await db.get_user_invites(message.chat.id, user_id)
     if min_inv > 0:
         percent = min(100, int(round((user_invites / min_inv) * 100)))
@@ -170,13 +174,13 @@ async def cmd_takliflarim(message: Message) -> None:
     else:
         status_text = f"└ ➕ **Siz taklif qilgan a'zolar:** **{user_invites} ta** (Cheklov o'rnatilmagan)"
 
-    await message.reply(
+    await safe_reply(
+        message,
         f"📊 **SIZNING TAKLIF HISOBINGIZ** 👥\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 **Foydalanuvchi:** {user_name}\n"
         f"{status_text}\n\n"
         f"💡 *Boshqa a'zoning takliflarini bilish uchun uning xabariga Reply qilib `/takliflarim` deb yozing!*",
-        parse_mode="Markdown",
     )
 
 
@@ -188,9 +192,11 @@ async def cmd_top_invites(message: Message) -> None:
         return
 
     top_inviters = await db.get_top_inviters(message.chat.id, limit=10)
+    safe_title = escape_md(message.chat.title)
     if not top_inviters:
-        await message.reply(
-            f"ℹ️ **'{message.chat.title}'** guruhida hali taklif qilingan a'zolar mavjud emas.\n"
+        await safe_reply(
+            message,
+            f"ℹ️ **'{safe_title}'** guruhida hali taklif qilingan a'zolar mavjud emas.\n"
             "Foydalanuvchilar guruhga do'stlarini qo'shgach, reyting avtomatik shakllanadi!"
         )
         return
@@ -202,13 +208,13 @@ async def cmd_top_invites(message: Message) -> None:
     text = (
         f"🥇 **TOP TAKLIFCHILAR (TOP-10)** 👥\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🏛 **Guruh:** «{message.chat.title}»\n\n"
+        f"🏛 **Guruh:** «{safe_title}»\n\n"
     )
 
     for idx, u in enumerate(top_inviters):
         medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
-        name = u["full_name"] or "Foydalanuvchi"
-        username_part = f" (@{u['username']})" if u["username"] else ""
+        name = escape_md(u["full_name"]) or "Foydalanuvchi"
+        username_part = f" (@{escape_md(u['username'])})" if u["username"] else ""
         cnt = u["invite_count"]
 
         if min_inv > 0:
@@ -218,7 +224,7 @@ async def cmd_top_invites(message: Message) -> None:
             text += f"{medal} **{name}**{username_part} — **{cnt} ta** a'zo qo'shgan\n"
 
     text += "\n💡 *Guruhga do'stlaringizni taklif qiling va reytingda 1-o'ringa chiqing!*\nO'z hisobingiz: `/takliflarim`"
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 # ── /profil (Foydalanuvchi profili, darajasi va yutuqlari) ─────────
@@ -237,9 +243,9 @@ async def cmd_user_profile(message: Message) -> None:
         return
 
     profile = await db.get_user_profile(message.chat.id, target_user.id)
-    name = target_user.full_name or "Foydalanuvchi"
-    uname = f"@{target_user.username}" if target_user.username else name
-    user_link = f"[{name}](tg://user?id={target_user.id})"
+    name = escape_md(target_user.full_name) or "Foydalanuvchi"
+    uname = f"@{escape_md(target_user.username)}" if target_user.username else name
+    user_link = safe_mention(target_user.full_name, target_user.id)
 
     msg_cnt = profile.get("message_count", 0)
     xp = profile.get("xp", 0)
@@ -279,7 +285,7 @@ async def cmd_user_profile(message: Message) -> None:
         ]
     )
 
-    await message.reply(text, reply_markup=kb, parse_mode="Markdown")
+    await safe_reply(message, text, reply_markup=kb)
 
 
 # ── /kunlik (Har kunlik faollik uchun bonus XP) ─────────────────────
@@ -293,14 +299,14 @@ async def cmd_claim_daily(message: Message) -> None:
         return
 
     ok, xp_amount, err = await db.claim_daily_xp(message.chat.id, message.from_user.id)
-    mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
+    mention = safe_mention(message.from_user.full_name, message.from_user.id)
 
     if not ok:
-        await message.reply(
+        await safe_reply(
+            message,
             f"⏳ {mention}, **siz bugungi kunlik bonusingizni allaqachon olgansiz!** 😊\n\n"
             f"Keyingi bonusni ertaga olishingiz mumkin.\n"
             f"O'z darajangizni ko'rish: `/profil`",
-            parse_mode="Markdown",
         )
         return
 
@@ -308,7 +314,8 @@ async def cmd_claim_daily(message: Message) -> None:
     new_lvl = profile.get("level", 1)
     new_xp = profile.get("xp", 0)
 
-    await message.reply(
+    await safe_reply(
+        message,
         f"🎉 **KUNLIK BONUS TOPSHIRILDI!** 🎁\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👏 Tabriklaymiz, {mention}!\n"
@@ -317,7 +324,6 @@ async def cmd_claim_daily(message: Message) -> None:
         f"├ ⭐ Daraja: **Level {new_lvl}**\n"
         f"└ 📈 Jami XP: **{new_xp} XP**\n\n"
         f"💡 Guruhda faol bo'ling va eng yuqori ligaga chiqing!",
-        parse_mode="Markdown",
     )
 
 
@@ -334,16 +340,17 @@ async def cmd_top_levels(message: Message) -> None:
         return
 
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    safe_title = escape_md(message.chat.title)
     text = (
         f"🏆 **ENG YUQORI DARAJA VA XP EGALARI (TOP-10)** 🌟\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🏛 **Guruh:** «{message.chat.title}»\n\n"
+        f"🏛 **Guruh:** «{safe_title}»\n\n"
     )
 
     for idx, u in enumerate(top_users):
         medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
-        name = u["full_name"] or "Foydalanuvchi"
-        uname = f" (@{u['username']})" if u["username"] else ""
+        name = escape_md(u["full_name"]) or "Foydalanuvchi"
+        uname = f" (@{escape_md(u['username'])})" if u["username"] else ""
         lvl = u.get("level", 1)
         xp = u.get("xp", 0)
         rep = u.get("reputation", 0)
@@ -351,7 +358,7 @@ async def cmd_top_levels(message: Message) -> None:
         text += f"{medal} **{name}**{uname}\n   ⭐ **Level {lvl}** ({xp} XP) • {title} • 🌟 {rep} rep\n\n"
 
     text += "💡 *Xabar yozing, do'stlaringizni taklif qiling va har kuni `/kunlik` oling!*\nSizning profilingiz: `/profil`"
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 # ── /tasodif (Konkurs va giveaway lar uchun tasodifiy g'olib) ───────
@@ -380,10 +387,11 @@ async def cmd_random_winner(message: Message, bot: Bot) -> None:
     await status_msg.edit_text("🎲 **TASODIFIY TANLOV...**\n\n1️⃣ ...")
     await asyncio.sleep(0.8)
 
-    w_name = winner["full_name"] or "Foydalanuvchi"
-    w_mention = f"[{w_name}](tg://user?id={winner['user_id']})"
-    w_uname = f"@{winner['username']}" if winner.get("username") else "mavjud emas"
+    w_name = escape_md(winner["full_name"]) or "Foydalanuvchi"
+    w_mention = safe_mention(winner["full_name"], winner["user_id"])
+    w_uname = f"@{escape_md(winner.get('username'))}" if winner.get("username") else "mavjud emas"
     msgs = winner.get("message_count", 0)
+    admin_name = escape_md(message.from_user.full_name if message.from_user else 'Admin')
 
     final_text = (
         f"🎉 **TASODIFIY TANLOV G'OLIBI ANIQLANDI!** 🏆\n"
@@ -394,9 +402,13 @@ async def cmd_random_winner(message: Message, bot: Bot) -> None:
         f"💬 **Guruhdagi faolligi:** {msgs} ta xabar\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🎊 Barcha guruh a'zolari nomidan chin dildan tabriklaymiz! 👏\n"
-        f"👮‍♂️ O'tkazgan admin: {message.from_user.full_name if message.from_user else 'Admin'}"
+        f"👮‍♂️ O'tkazgan admin: {admin_name}"
     )
-    await status_msg.edit_text(final_text, parse_mode="Markdown")
+    try:
+        await status_msg.edit_text(final_text, parse_mode="Markdown")
+    except Exception:
+        clean = final_text.replace("*", "").replace("`", "").replace("_", "")
+        await status_msg.edit_text(clean)
 
 
 

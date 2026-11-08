@@ -6,6 +6,7 @@ from aiogram.types import Message
 
 from database.db import db
 from filters.admin_filter import is_admin
+from services.ui_utils import escape_md, safe_reply
 
 router = Router(name="faq")
 
@@ -21,26 +22,29 @@ async def cmd_faqs_list(message: Message) -> None:
 
     faqs = await db.get_all_faqs(message.chat.id)
     if not faqs:
-        await message.reply(
+        await safe_reply(
+            message,
             "❓ **Guruhda avto-javoblar (filtrlar) hali mavjud emas.**\n\n"
             "Adminlar yangi avto-javob qo'shishi mumkin:\n"
             "`/filtrqosh [kalit_so'z] = [javob matni]` yoki `/savolqoshish [kalit] = [javob]`\n\n"
             "Masalan:\n"
             "`/filtrqosh manzil = Bizning manzil: Toshkent shahar, Chilonzor tumani`",
-            parse_mode="Markdown",
         )
         return
 
-    text = f"❓ **'{message.chat.title}' guruhining avto-javoblari (Filtrlar):**\n\n"
+    safe_title = escape_md(message.chat.title)
+    text = f"❓ **'{safe_title}' guruhining avto-javoblari (Filtrlar):**\n\n"
     for idx, f in enumerate(faqs, 1):
-        text += f"**{idx}.** `{f['keyword']}` ➔ _{f['answer']}_\n"
+        kw = escape_md(f['keyword'])
+        ans = escape_md(f['answer'])
+        text += f"**{idx}.** `{kw}` ➔ _{ans}_\n"
 
     text += (
         "\n💡 *A'zolar ushbu kalit so'zlarni yozganda, bot avtomatik javob beradi.*\n"
         "➕ **Qo'shish:** `/filtrqosh so'z = javob`\n"
         "➖ **O'chirish:** `/filtrochir so'z`"
     )
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 # ── /savolqoshish [kalit = javob] ─────────────────────────────────
@@ -56,13 +60,13 @@ async def cmd_add_faq(message: Message, bot: Bot) -> None:
 
     raw_text = (message.text or "").split(maxsplit=1)
     if len(raw_text) < 2 or "=" not in raw_text[1]:
-        await message.reply(
+        await safe_reply(
+            message,
             "📝 **Yangi avto-javob qo'shish formati:**\n\n"
             "`/filtrqosh [kalit so'z] = [javob matni]`\n\n"
             "Masalan:\n"
             "`/filtrqosh narxlar = Xizmat narxlari bilan @kanalimiz orqali tanishishingiz mumkin.`\n"
             "`/filtrqosh qayerda = Biz Chilonzorda joylashganmiz.`",
-            parse_mode="Markdown",
         )
         return
 
@@ -77,12 +81,14 @@ async def cmd_add_faq(message: Message, bot: Bot) -> None:
 
     creator_id = user_id or 0
     await db.add_faq(message.chat.id, keyword, answer, creator_id)
-    await message.reply(
+    safe_kw = escape_md(keyword)
+    safe_ans = escape_md(answer)
+    await safe_reply(
+        message,
         f"✅ **Avto-javob saqlandi!**\n\n"
-        f"🔑 **Kalit so'z:** `{keyword}`\n"
-        f"💬 **Javob:** {answer}\n\n"
-        f"Endi biror a'zo guruhda `{keyword}` so'zini ishlatsa, bot avtomatik javob beradi.",
-        parse_mode="Markdown",
+        f"🔑 **Kalit so'z:** `{safe_kw}`\n"
+        f"💬 **Javob:** {safe_ans}\n\n"
+        f"Endi biror a'zo guruhda `{safe_kw}` so'zini ishlatsa, bot avtomatik javob beradi.",
     )
 
 
@@ -99,12 +105,13 @@ async def cmd_remove_faq(message: Message, bot: Bot) -> None:
 
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("Format: `/savolochir [kalit so'z]`\nMasalan: `/savolochir narxlar`", parse_mode="Markdown")
+        await safe_reply(message, "Format: `/savolochir [kalit so'z]`\nMasalan: `/savolochir narxlar`")
         return
 
     keyword = parts[1].strip().lower()
     removed = await db.remove_faq(message.chat.id, keyword)
+    safe_kw = escape_md(keyword)
     if removed:
-        await message.reply(f"✅ `{keyword}` kalit so'zidagi avto-javob o'chirildi!", parse_mode="Markdown")
+        await safe_reply(message, f"✅ `{safe_kw}` kalit so'zidagi avto-javob o'chirildi!")
     else:
-        await message.reply(f"❌ `{keyword}` bo'yicha avto-javob topilmadi.", parse_mode="Markdown")
+        await safe_reply(message, f"❌ `{safe_kw}` bo'yicha avto-javob topilmadi.")

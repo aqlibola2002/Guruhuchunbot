@@ -1,4 +1,41 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from aiogram.types import Message
+
+
+def escape_md(text: str | None) -> str:
+    """Telegram Markdown xatoliklarini oldini olish uchun xavfli belgilarni zararsizlantiradi."""
+    if not text:
+        return ""
+    return (
+        str(text)
+        .replace("[", "(")
+        .replace("]", ")")
+        .replace("*", "")
+        .replace("_", " ")
+        .replace("`", "'")
+    )
+
+
+def safe_mention(full_name: str | None, user_id: int | None = None) -> str:
+    """Foydalanuvchi ismidan xavfsiz Telegram Markdown linkini yasaydi."""
+    clean_name = escape_md(full_name) or "Foydalanuvchi"
+    if user_id:
+        return f"[{clean_name}](tg://user?id={user_id})"
+    return clean_name
+
+
+async def safe_reply(message: Message, text: str, reply_markup=None, **kwargs) -> Message | None:
+    """Xabarni xavfsiz yuborish: agar Markdown parsingda xatolik yuz bersa, toza matn ko'rinishida yuboradi."""
+    try:
+        return await message.reply(text, reply_markup=reply_markup, parse_mode="Markdown", **kwargs)
+    except Exception:
+        clean = text.replace("*", "").replace("_", "").replace("`", "")
+        try:
+            return await message.reply(clean, reply_markup=reply_markup, **kwargs)
+        except Exception:
+            return None
 
 
 def make_progress_bar(percent: int | float, length: int = 10) -> str:

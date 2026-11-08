@@ -21,6 +21,7 @@ from database.db import db
 from filters.admin_filter import is_admin, can_bot_delete
 from services.target_resolver import resolve_target
 from handlers.moderation import send_audit_log
+from services.ui_utils import escape_md, safe_mention, safe_reply
 
 logger = logging.getLogger(__name__)
 router = Router(name="admin")
@@ -102,10 +103,11 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
     log_ch = group.get("log_channel_id", "")
     log_status = f"✅ Ulangan (`{log_ch}`)" if log_ch else "❌ Ulanmagan (`/setlog` orqali)"
 
+    safe_title = escape_md(message.chat.title)
     panel_text = (
         f"👑 **GURUH BOSHQARUV PANELI (ADMIN)** 🛡\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📍 **Guruh:** «{message.chat.title}»\n"
+        f"📍 **Guruh:** «{safe_title}»\n"
         f"🤖 **Bot maqomi:** {bot_status}\n"
         f"🛡 **Audit log kanali:** {log_status}\n\n"
         f"⚙️ **FAOL HIMOYA VA NAZORAT TIZIMLARI:**\n"
@@ -157,7 +159,7 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         ]
     )
 
-    await message.reply(panel_text, parse_mode="Markdown", reply_markup=kb)
+    await safe_reply(message, panel_text, reply_markup=kb)
 
 
 @router.callback_query(F.data == "open_settings_from_admin")
@@ -169,13 +171,14 @@ async def cb_open_settings_from_admin(call: CallbackQuery, bot: Bot) -> None:
         return
     group = await db.get_or_create_group(call.message.chat.id)
     kb = get_settings_keyboard(group)
-    await call.message.reply(
+    safe_title = escape_md(call.message.chat.title)
+    await safe_reply(
+        call.message,
         f"⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📍 **Guruh:** «{call.message.chat.title}»\n\n"
+        f"📍 **Guruh:** «{safe_title}»\n\n"
         f"Quyidagi interaktiv tugmalar orqali botning xavfsizlik va nazorat funksiyalarini boshqaring:",
         reply_markup=kb,
-        parse_mode="Markdown",
     )
     await call.answer()
 
@@ -189,15 +192,16 @@ async def cb_show_stats_admin(call: CallbackQuery, bot: Bot) -> None:
         return
     from database.db import db as _db
     stats = await _db.get_group_stats(call.message.chat.id)
-    await call.message.reply(
+    safe_title = escape_md(call.message.chat.title)
+    await safe_reply(
+        call.message,
         f"📊 **GURUH STATISTIKASI (ADMIN)** 📈\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📍 **Guruh:** «{call.message.chat.title}»\n\n"
+        f"📍 **Guruh:** «{safe_title}»\n\n"
         f"├ 💬 Jami xabarlar: **{stats.get('total_messages', 0):,}** ta\n"
         f"├ 👤 Jami a'zolar: **{stats.get('total_members', 0):,}** ta\n"
         f"├ 👥 Taklif qilingan: **{stats.get('total_invites', 0):,}** ta\n"
         f"└ ⚠️ Berilgan ogohlantirishlar: **{stats.get('total_warns', 0):,}** ta",
-        parse_mode="Markdown",
     )
     await call.answer()
 
@@ -347,7 +351,7 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
     min_inv = group.get("min_invites", 0)
     inv_enabled = group.get("invites_enabled", 1)
 
-    mention = f"[{target.full_name}](tg://user?id={target.user_id})"
+    mention = safe_mention(target.full_name, target.user_id)
 
     target_is_admin = await is_admin(bot, message.chat.id, target.user_id)
     if target_is_admin:
@@ -363,7 +367,8 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
     else:
         extra_note = "ℹ️ Ushbu a'zoning barcha takliflari 0 ga tushirildi."
 
-    await message.reply(
+    await safe_reply(
+        message,
         f"0️⃣ **TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 **A'zo:** {mention}\n"
@@ -371,7 +376,6 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
         f"🔄 **Hozirgi takliflar:** **0** ta\n\n"
         f"{extra_note}\n\n"
         f"👮‍♂️ Admin: {get_admin_name(message)}",
-        parse_mode="Markdown",
     )
 
 
@@ -2006,14 +2010,16 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         )
         await db.record_punishment(message.chat.id, "mute")
         admin_n = get_admin_name(message)
-        await message.reply(
+        safe_target_name = escape_md(target.full_name)
+        safe_reason = escape_md(reason)
+        await safe_reply(
+            message,
             f"🔇 **YOZISHDAN CHEKLANDI (MUTE)** 🔇\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"👤 **Foydalanuvchi:** {safe_target_name}\n"
             f"⏳ **Muddat:** **{duration_str}**\n"
-            f"📝 **Sabab:** {reason}\n"
+            f"📝 **Sabab:** {safe_reason}\n"
             f"👮‍♂️ **Admin:** {admin_n}",
-            parse_mode="Markdown",
         )
         asyncio.create_task(send_audit_log(
             bot=bot,
@@ -2042,12 +2048,12 @@ async def cmd_unmute(message: Message, bot: Bot) -> None:
 
     target = await resolve_target(message)
     if target.error:
-        await message.reply(
+        await safe_reply(
+            message,
             "🔊 **Yozish cheklovini olib tashlash (Unmute):**\n\n"
             "• Xabarga **Reply** qilib: `/unmute`\n"
             "• Yoki `@username` orqali: `/unmute @foydalanuvchi`\n"
             "• Yoki Telegram **ID** orqali: `/unmute 123456789`",
-            parse_mode="Markdown",
         )
         return
 
@@ -2064,13 +2070,14 @@ async def cmd_unmute(message: Message, bot: Bot) -> None:
             ),
         )
         admin_n = get_admin_name(message)
-        await message.reply(
+        safe_target_name = escape_md(target.full_name)
+        await safe_reply(
+            message,
             f"🔊 **YOZISH CHEKLOVI OLIB TASHLANDI (UNMUTE)!** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"👤 **Foydalanuvchi:** {safe_target_name}\n"
             f"✨ Endi guruhda bemalol xabar yoza oladi.\n\n"
             f"👮‍♂️ **Admin:** {admin_n}",
-            parse_mode="Markdown",
         )
         asyncio.create_task(send_audit_log(
             bot=bot,
@@ -2099,13 +2106,13 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
 
     target = await resolve_target(message)
     if target.error:
-        await message.reply(
+        await safe_reply(
+            message,
             "🚫 **Guruhdan chiqarish (Ban):**\n\n"
             "Format:\n"
             "• Foydalanuvchi xabariga **Reply** qilib: `/hayda [sabab]`\n"
             "• Yoki `@username` orqali: `/hayda @foydalanuvchi [sabab]`\n"
             "• Yoki Telegram **ID** orqali: `/hayda 123456789 [sabab]`",
-            parse_mode="Markdown",
         )
         return
 
@@ -2119,14 +2126,16 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         await bot.ban_chat_member(chat_id=message.chat.id, user_id=target.user_id)
         await db.record_punishment(message.chat.id, "ban")
         admin_n = get_admin_name(message)
-        await message.reply(
+        safe_target_name = escape_md(target.full_name)
+        safe_reason = escape_md(reason)
+        await safe_reply(
+            message,
             f"🚫 **GURUHDAN CHIQARILDI (BAN)** 🚫\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **Foydalanuvchi:** {target.full_name}\n"
-            f"📝 **Sabab:** {reason}\n"
+            f"👤 **Foydalanuvchi:** {safe_target_name}\n"
+            f"📝 **Sabab:** {safe_reason}\n"
             f"⚡️ **Holat:** Guruhdan chiqarildi va bloklandi\n"
             f"👮‍♂️ **Admin:** {admin_n}",
-            parse_mode="Markdown",
         )
         asyncio.create_task(send_audit_log(
             bot=bot,
@@ -2155,11 +2164,11 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
 
     target = await resolve_target(message)
     if target.error:
-        await message.reply(
+        await safe_reply(
+            message,
             "🕊 **Foydalanuvchini bandan chiqarish (Unban):**\n\n"
             "• `@username` orqali: `/unban @foydalanuvchi`\n"
             "• Yoki Telegram **ID** orqali: `/unban 123456789`",
-            parse_mode="Markdown",
         )
         return
 
@@ -2170,13 +2179,14 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
             only_if_banned=True,
         )
         admin_n = get_admin_name(message)
-        await message.reply(
+        safe_target_name = escape_md(target.full_name)
+        await safe_reply(
+            message,
             f"🕊 **FOYDALANUVCHI BANDAN CHIQARILDI (UNBAN)!** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"👤 **Foydalanuvchi:** {safe_target_name}\n"
             f"🚪 Endi guruhga qayta qo'shilishi mumkin.\n\n"
             f"👮‍♂️ **Admin:** {admin_n}",
-            parse_mode="Markdown",
         )
         asyncio.create_task(send_audit_log(
             bot=bot,
@@ -2726,13 +2736,14 @@ async def cmd_settings(message: Message, bot: Bot) -> None:
 
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     kb = get_settings_keyboard(group)
-    await message.reply(
+    safe_title = escape_md(message.chat.title)
+    await safe_reply(
+        message,
         f"⚙️ **HIMOYA VA XAVFSIZLIK SOZLAMALARI** 🛡\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📍 **Guruh:** «{message.chat.title}»\n\n"
+        f"📍 **Guruh:** «{safe_title}»\n\n"
         f"Quyidagi interaktiv tugmalar orqali botning xavfsizlik va nazorat funksiyalarini boshqaring:",
         reply_markup=kb,
-        parse_mode="Markdown",
     )
 
 
@@ -2883,10 +2894,12 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
         ]
     )
 
-    await message.reply(
+    safe_title = escape_md(message.chat.title)
+    await safe_reply(
+        message,
         f"📥 **QO'SHILISH ARIZALARI (ZAYAFKA)** 🚀\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"├ 📍 **Guruh:** «{message.chat.title}»\n"
+        f"├ 📍 **Guruh:** «{safe_title}»\n"
         f"├ ⚡️ **Joriy holat:** {status_label}\n"
         f"├ 📊 **Qabul qilingan jami arizalar:** `{approved_count}` ta\n"
         f"└ 🤖 **Bot huquqi:** {rights_text}\n\n"
@@ -2895,7 +2908,6 @@ async def cmd_auto_approve_joins(message: Message, bot: Bot) -> None:
         f"└ `/zayafka off` — avtomatik qabul qilishni to'xtatish\n\n"
         f"Yoki quyidagi tugma orqali o'zgartiring:",
         reply_markup=kb,
-        parse_mode="Markdown",
     )
 
 
@@ -2962,11 +2974,17 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
         except Exception:
             pass
 
-        elon_msg = await bot.send_message(
-            chat_id=message.chat.id,
-            text=f"📢 **MUHIM E'LON!** 📌\n\n{announcement_content}\n\n*— Guruh ma'muriyati*",
-            parse_mode="Markdown",
-        )
+        try:
+            elon_msg = await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"📢 **MUHIM E'LON!** 📌\n\n{announcement_content}\n\n*— Guruh ma'muriyati*",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            elon_msg = await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"📢 MUHIM E'LON! 📌\n\n{announcement_content}\n\n— Guruh ma'muriyati",
+            )
         try:
             await bot.pin_chat_message(chat_id=message.chat.id, message_id=elon_msg.message_id, disable_notification=False)
         except Exception:
@@ -3020,10 +3038,12 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
         status_txt = "YOQILGAN ✅" if cur_en == 1 else "O'CHIRILGAN ❌"
         st = group.get("night_mode_start", "23:00")
         en = group.get("night_mode_end", "07:00")
-        await message.reply(
+        safe_title = escape_md(message.chat.title)
+        await safe_reply(
+            message,
             f"🌙 **TUNGI REJIM SOZLAMALARI** 🔒\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"├ 📍 **Guruh:** «{message.chat.title}»\n"
+            f"├ 📍 **Guruh:** «{safe_title}»\n"
             f"├ ⚡️ **Joriy holat:** {status_txt}\n"
             f"└ ⏰ **Vaqt oralig'i:** `{st}` dan `{en}` gacha\n\n"
             f"📌 **Qanday boshqariladi:**\n"
@@ -3031,7 +3051,6 @@ async def cmd_night_mode(message: Message, bot: Bot) -> None:
             f"├ `/tun off` — Tungi rejimni o'chirish\n"
             f"└ `/tun 23:00-07:00` — Maxsus vaqt oralig'ini sozlash\n\n"
             f"💡 *Tungi rejimda bot belgilangan soatda oddiy a'zolarga yozishni avtomatik yopadi va tongda qayta ochadi.*",
-            parse_mode="Markdown",
         )
         return
 
@@ -3124,13 +3143,13 @@ async def cmd_set_welcome(message: Message, bot: Bot) -> None:
 
     custom_text = parts[1].strip()
     await db.set_custom_welcome(message.chat.id, custom_text)
-    await message.reply(
+    await safe_reply(
+        message,
         f"✅ **YANGI A'ZOLARNI KUTIB OLISH MATNI O'RNATILDI!** 🎉\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📌 **Yangi salomlashish matni:**\n{custom_text}\n\n"
         f"💡 Endi guruhga yangi a'zo kirganda yoki qo'shilganda bot ushbu matn bilan kutib oladi!\n\n"
         f"👮‍♂️ Admin: {get_admin_name(message)}",
-        parse_mode="Markdown",
     )
 
 
@@ -3166,12 +3185,13 @@ async def cmd_rules(message: Message, bot: Bot) -> None:
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     min_inv = int(group.get("min_invites") or 0)
     inv_info = f"\n• 👥 Guruhda yozish uchun kamida **{min_inv} ta a'zo qo'shish shart**!" if min_inv > 0 and group.get("invites_enabled", 1) == 1 else ""
+    safe_title = escape_md(message.chat.title)
 
     if rules:
-        text = f"📜 **«{message.chat.title}» GURUHI QOIDALARI** 📜\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n{rules}{inv_info}\n\n✅ *Guruhda yozayotgan har bir a'zo ushbu qoidalarga rioya qilishi shart!*"
+        text = f"📜 **«{safe_title}» GURUHI QOIDALARI** 📜\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n{rules}{inv_info}\n\n✅ *Guruhda yozayotgan har bir a'zo ushbu qoidalarga rioya qilishi shart!*"
     else:
         text = (
-            f"📜 **«{message.chat.title}» GURUHI QOIDALARI** 📜\n"
+            f"📜 **«{safe_title}» GURUHI QOIDALARI** 📜\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"1️⃣ Reklama, begona havolalar va spam tarqatish taqiqlanadi 🚫\n"
             f"2️⃣ Boshqa a'zolarni haqorat qilish va behayo so'zlar ishlatish man etiladi 🤬\n"
@@ -3179,7 +3199,7 @@ async def cmd_rules(message: Message, bot: Bot) -> None:
             f"4️⃣ Guruh a'zolari bir-birini hurmat qilishi shart ✨{inv_info}\n\n"
             f"✏️ *Adminlar yangi qoida o'rnatishi uchun:* `/yangiqoida [qoidalar matni]`"
         )
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 @router.message(Command("yangiqoida", "setrules", "qoidaqoy", ignore_case=True))
@@ -3196,23 +3216,23 @@ async def cmd_set_rules(message: Message, bot: Bot) -> None:
     text = (message.text or "").strip()
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply(
+        await safe_reply(
+            message,
             "📜 **Guruh qoidalarini o'rnatish:**\n\n"
             "Foydalanish: `/yangiqoida [qoidalar matni]`\n\n"
             "Masalan:\n"
             "`/yangiqoida 1. Reklama mumkin emas! 2. Hurmat saqlang!`",
-            parse_mode="Markdown",
         )
         return
 
     new_rules = parts[1].strip()
     await db.set_group_rules(message.chat.id, new_rules)
-    await message.reply(
+    await safe_reply(
+        message,
         f"✅ **GURUH QOIDALARI YANGILANDI!** 📜\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{new_rules}\n\n"
         f"👮‍♂️ Admin: {get_admin_name(message)}",
-        parse_mode="Markdown",
     )
 
 
@@ -3230,13 +3250,13 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
 
     target = await resolve_target(message)
     if target.error:
-        await message.reply(
+        await safe_reply(
+            message,
             "⚠️ **Foydalanuvchiga ogohlantirish berish:**\n\n"
             "Format:\n"
             "• Xabarga **Reply** qilib: `/ogohlantir [sabab]`\n"
             "• Yoki username bilan: `/ogohlantir @username [sabab]`\n"
             "• Yoki Telegram ID bilan: `/ogohlantir 123456789 [sabab]`",
-            parse_mode="Markdown",
         )
         return
 
@@ -3246,6 +3266,8 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
 
     reason = target.remaining_text.strip() or "Qoidalarni buzganlik"
     current_warns = await db.add_warn(message.chat.id, target.user_id, reason)
+    safe_target_name = escape_md(target.full_name)
+    safe_reason = escape_md(reason)
 
     if current_warns >= MAX_WARNS:
         # Chegaradan oshganda yozishdan cheklash (1 kun)
@@ -3262,26 +3284,26 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         except Exception:
             pass
 
-        await message.reply(
+        await safe_reply(
+            message,
             f"🚫 **OGOHLANTIRISHLAR LIMITI TUGADI!** 🚫\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"👤 **Foydalanuvchi:** {safe_target_name}\n"
             f"⚠️ **Ogohlantirishlar:** **{current_warns} / {MAX_WARNS} ta**\n"
             f"⏳ **Jazo:** 1 kunga yozishdan cheklandi (MUTE)!\n"
-            f"📝 **Oxirgi sabab:** {reason}\n"
+            f"📝 **Oxirgi sabab:** {safe_reason}\n"
             f"👮‍♂️ **Admin:** {get_admin_name(message)}",
-            parse_mode="Markdown",
         )
     else:
-        await message.reply(
+        await safe_reply(
+            message,
             f"⚠️ **OGOHLANTIRISH BERILDI!** ⚠️\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 **Foydalanuvchi:** {target.full_name}\n"
+            f"👤 **Foydalanuvchi:** {safe_target_name}\n"
             f"📊 **Ogohlantirishlar soni:** **{current_warns} / {MAX_WARNS} ta**\n"
-            f"📝 **Sabab:** {reason}\n"
+            f"📝 **Sabab:** {safe_reason}\n"
             f"⚠️ *Eslatma: {MAX_WARNS} ta ogohlantirish to'plansa, avtomatik jazo qo'llaniladi!*\n"
             f"👮‍♂️ **Admin:** {get_admin_name(message)}",
-            parse_mode="Markdown",
         )
 
 
@@ -3298,21 +3320,22 @@ async def cmd_unwarn(message: Message, bot: Bot) -> None:
 
     target = await resolve_target(message)
     if target.error:
-        await message.reply(
+        await safe_reply(
+            message,
             "🕊 **Ogohlantirishni olib tashlash (Kechirish):**\n\n"
             "Format: Xabarga **Reply** qilib `/kechir` yoki `/unwarn @username` deb yozing.",
-            parse_mode="Markdown",
         )
         return
 
     new_count = await db.remove_warn(message.chat.id, target.user_id)
-    await message.reply(
+    safe_target_name = escape_md(target.full_name)
+    await safe_reply(
+        message,
         f"🕊 **OGOHLANTIRISH OLIB TASHLANDI!** ✅\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 **Foydalanuvchi:** {target.full_name}\n"
+        f"👤 **Foydalanuvchi:** {safe_target_name}\n"
         f"📊 **Qolgan ogohlantirishlar:** **{new_count} / {MAX_WARNS} ta**\n"
         f"👮‍♂️ **Admin:** {get_admin_name(message)}",
-        parse_mode="Markdown",
     )
 
 
@@ -3331,12 +3354,13 @@ async def cmd_warns_status(message: Message, bot: Bot) -> None:
         name = target.full_name
 
     warn_cnt = await db.get_warns(message.chat.id, uid)
-    await message.reply(
+    safe_user_name = escape_md(name)
+    await safe_reply(
+        message,
         f"📊 **OGOHLANTIRISHLAR STATUSI** ⚠️\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 **Foydalanuvchi:** {name}\n"
+        f"👤 **Foydalanuvchi:** {safe_user_name}\n"
         f"⚠️ **Ogohlantirishlar soni:** **{warn_cnt} / {MAX_WARNS} ta**",
-        parse_mode="Markdown",
     )
 
 
@@ -3539,17 +3563,18 @@ async def cmd_add_banned_word(message: Message, bot: Bot) -> None:
         return
 
     ok = await db.add_banned_word(message.chat.id, word)
+    safe_word = escape_md(word)
     if ok:
-        await message.reply(
+        await safe_reply(
+            message,
             f"✅ **TAQIQLANGAN SO'Z QO'SHILDI!** 🛑\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📝 So'z: **«{word}»**\n"
+            f"📝 So'z: **«{safe_word}»**\n"
             f"🔒 Endi a'zolar bu so'zni yozganda xabarlari avtomatik o'chiriladi.\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
-            parse_mode="Markdown",
         )
     else:
-        await message.reply(f"⚠️ **«{word}»** so'zi allaqachon taqiqlangan so'zlar ro'yxatida bor.")
+        await safe_reply(message, f"⚠️ **«{safe_word}»** so'zi allaqachon taqiqlangan so'zlar ro'yxatida bor.")
 
 
 @router.message(Command("sozochir", "soz_ochir", "unbanword", ignore_case=True))
@@ -3565,26 +3590,27 @@ async def cmd_remove_banned_word(message: Message, bot: Bot) -> None:
 
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply(
+        await safe_reply(
+            message,
             "🕊 **Taqiqlangan so'zni olib tashlash:**\n\n"
             "Foydalanish: `/sozochir [so'z]`\n"
             "Masalan: `/sozochir qimor`",
-            parse_mode="Markdown",
         )
         return
 
     word = parts[1].strip().lower()
     removed = await db.remove_banned_word(message.chat.id, word)
+    safe_word = escape_md(word)
     if removed:
-        await message.reply(
+        await safe_reply(
+            message,
             f"🕊 **TAQIQLANGAN SO'Z OLIB TASHLANDI!** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📝 So'z: **«{word}»** ro'yxatdan muvaffaqiyatli o'chirildi.\n\n"
+            f"📝 So'z: **«{safe_word}»** ro'yxatdan muvaffaqiyatli o'chirildi.\n\n"
             f"👮‍♂️ Admin: {get_admin_name(message)}",
-            parse_mode="Markdown",
         )
     else:
-        await message.reply(f"⚠️ **«{word}»** so'zi taqiqlangan so'zlar ro'yxatida topilmadi.")
+        await safe_reply(message, f"⚠️ **«{safe_word}»** so'zi taqiqlangan so'zlar ro'yxatida topilmadi.")
 
 
 @router.message(Command("sozlar", "taqiqlangan", "bannedwords", ignore_case=True))
@@ -3607,16 +3633,16 @@ async def cmd_list_banned_words(message: Message, bot: Bot) -> None:
         )
         return
 
-    lines = [f"{idx}. `{w}`" for idx, w in enumerate(words, start=1)]
+    lines = [f"{idx}. `{escape_md(w)}`" for idx, w in enumerate(words, start=1)]
     words_text = "\n".join(lines)
-    await message.reply(
+    await safe_reply(
+        message,
         f"📋 **GURUHDAGI MAXSUS TAQIQLANGAN SO'ZLAR ({len(words)} ta):** 🛑\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{words_text}\n\n"
         f"➕ Qo'shish: `/sozqoshish [so'z]`\n"
         f"➖ O'chirish: `/sozochir [so'z]`\n"
         f"🧹 Barchasini tozalash: `/soztozala`",
-        parse_mode="Markdown",
     )
 
 
@@ -3767,8 +3793,9 @@ async def cmd_security_audit(message: Message, bot: Bot) -> None:
     total_shields = 9
     score = int(round((active_shields / total_shields) * 100))
 
+    safe_title = escape_md(message.chat.title)
     audit_text = (
-        f"🛡 **«{message.chat.title}» GURUHI XAVFSIZLIK AUDITI** 🛡\n"
+        f"🛡 **«{safe_title}» GURUHI XAVFSIZLIK AUDITI** 🛡\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🏆 **Xavfsizlik indeksi:** **{score}%** (Yuqori daraja)\n"
         f"⚡️ **Faol qalqonlar:** **{active_shields} / {total_shields} ta**\n\n"
@@ -3786,7 +3813,7 @@ async def cmd_security_audit(message: Message, bot: Bot) -> None:
         f"💡 *Sozlamalarni interaktiv boshqarish uchun:* `/sozlamalar`\n"
         f"👮‍♂️ *Guruh 24/7 avtomatik himoya ostida!* ✅"
     )
-    await message.reply(audit_text, parse_mode="Markdown")
+    await safe_reply(message, audit_text)
 
 
 # ── /setlog [kanal] (Xavfsizlik audit log kanalini ulash) ─────────────
@@ -3877,8 +3904,9 @@ async def cmd_weekly_summary(message: Message, bot: Bot) -> None:
             top_lines.append(f"{medal} **{name}** — {u.get('message_count', 0):,} ta xabar")
         top_text = "\n\n🏆 **HAFTANING ENG FAOL A'ZOLARI:**\n" + "\n".join(top_lines)
 
+    safe_chat_title = escape_md(chat_title)
     text = (
-        f"📊 **«{chat_title}» — HAFTALIK GURUH XULOSASI** 🏆\n"
+        f"📊 **«{safe_chat_title}» — HAFTALIK GURUH XULOSASI** 🏆\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📅 **Davr:** O'tgan 7 kunlik faollik monitoringi\n\n"
         f"💬 **Yozilgan xabarlar:** **{w_msgs:,}** ta\n"
@@ -3887,7 +3915,7 @@ async def cmd_weekly_summary(message: Message, bot: Bot) -> None:
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👮‍♂️ Guruh 24/7 kiber-himoya nazorati ostida! ✨"
     )
-    await message.reply(text, parse_mode="Markdown")
+    await safe_reply(message, text)
 
 
 # ── 🚨 Shoshilinch Admin Chaqiruv Tizimi (@admin, /sos, /admin_chaqir) ──
@@ -3909,7 +3937,7 @@ async def cmd_call_admin_sos(message: Message, bot: Bot) -> None:
     SOS_COOLDOWN[key] = now
 
     caller_name = message.from_user.full_name if message.from_user else "Guruh a'zosi"
-    caller_mention = f"[{caller_name}](tg://user?id={user_id})" if user_id else caller_name
+    caller_mention = safe_mention(caller_name, user_id)
 
     reply_to = message.reply_to_message
     reason = message.text or ""
