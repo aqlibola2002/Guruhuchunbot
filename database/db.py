@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import datetime
+import os
+import random
+import shutil
+from pathlib import Path
 from typing import Any
 import aiosqlite
 from config import DB_PATH
@@ -451,6 +455,9 @@ class Database:
             "anti_arabic_enabled",
             "anti_flood_enabled",
             "anti_inline_bot",
+            "anti_channel_enabled",
+            "anti_caps_enabled",
+            "captcha_enabled",
             "anti_duplicate_enabled",
             "anti_emoji_spam",
             "weekly_digest_enabled",

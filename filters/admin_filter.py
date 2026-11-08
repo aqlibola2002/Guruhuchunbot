@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from aiogram.filters import Filter
 from aiogram.types import Message
 from aiogram import Bot
@@ -10,6 +11,10 @@ from config import ADMIN_IDS
 ANONYMOUS_ADMIN_ID = 1087968824  # @GroupAnonymousBot
 CHANNEL_BOT_ID = 136817688       # @Channel_Bot
 SERVICE_BOT_ID = 777000          # Telegram Service Notifications
+
+_ADMIN_CACHE: dict[tuple[int, int], tuple[bool, float]] = {}
+_CAN_DELETE_CACHE: dict[int, tuple[bool, float]] = {}
+CACHE_TTL = 30.0  # 30 soniyalik tezkor kesh
 
 
 async def is_admin(bot: Bot, chat_id: int, user_id: int | None = None, message: Message | None = None) -> bool:
@@ -61,21 +66,38 @@ async def is_admin(bot: Bot, chat_id: int, user_id: int | None = None, message: 
             return True
         return False
 
-    # 4. Telegram API orqali guruh adminlari ro'yxatidan tekshirish
+    # 4. Keshdan tekshirish
+    now = time.time()
+    cache_key = (chat_id, user_id)
+    cached = _ADMIN_CACHE.get(cache_key)
+    if cached and (now - cached[1] < CACHE_TTL):
+        return cached[0]
+
+    # 5. Telegram API orqali guruh adminlari ro'yxatidan tekshirish
     try:
         member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        return member.status in ("creator", "administrator")
+        res = member.status in ("creator", "administrator")
+        _ADMIN_CACHE[cache_key] = (res, now)
+        return res
     except Exception:
         return False
 
 
 async def can_bot_delete(bot: Bot, chat_id: int) -> bool:
     """Bot guruhda admin ekanligi va xabarlarni o'chira olish huquqi borligini tekshiradi."""
+    now = time.time()
+    cached = _CAN_DELETE_CACHE.get(chat_id)
+    if cached and (now - cached[1] < CACHE_TTL):
+        return cached[0]
+
     try:
         me = await bot.get_me()
         member = await bot.get_chat_member(chat_id=chat_id, user_id=me.id)
         if member.status in ("creator", "administrator"):
-            return getattr(member, "can_delete_messages", True)
+            res = getattr(member, "can_delete_messages", True)
+            _CAN_DELETE_CACHE[chat_id] = (res, now)
+            return res
+        _CAN_DELETE_CACHE[chat_id] = (False, now)
         return False
     except Exception:
         return False

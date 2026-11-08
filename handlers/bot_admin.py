@@ -227,7 +227,7 @@ async def cb_admin_restore_db(call: CallbackQuery) -> None:
     await call.answer()
 
 
-@router.message(F.document)
+@router.message(F.chat.type == "private", F.document.file_name.func(lambda name: bool(name and name.endswith(".db"))))
 async def handle_db_restore_upload(message: Message, bot: Bot) -> None:
     user_id = message.from_user.id if message.from_user else None
     if not is_bot_owner(user_id):

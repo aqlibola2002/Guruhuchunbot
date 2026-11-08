@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from aiogram import Router, Bot, F
 from aiogram.filters import Command
@@ -14,12 +16,13 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-from config import MAX_WARNS, DEFAULT_MUTE_SECONDS, AUTO_DELETE_NOTIFICATION_DELAY
+from config import ADMIN_IDS, MAX_WARNS, DEFAULT_MUTE_SECONDS, AUTO_DELETE_NOTIFICATION_DELAY
 from database.db import db
-from filters.admin_filter import is_admin
+from filters.admin_filter import is_admin, can_bot_delete
 from services.target_resolver import resolve_target
 from handlers.moderation import send_audit_log
 
+logger = logging.getLogger(__name__)
 router = Router(name="admin")
 
 
@@ -2250,7 +2253,7 @@ def make_progress_bar(percent: int, length: int = 10) -> str:
 
 
 # ── /tozala [Guruhni tozalash: chiroyli progress bar va boshqaruv] ──────
-@router.message(Command("tozala", "tozalash", "clear", ignore_case=True))
+@router.message(Command("tozala", "tozalash", "clear", "clean", "purge", ignore_case=True))
 async def cmd_clear(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         await message.reply("⚠️ Bu buyruq faqat guruhlarda ishlaydi!")
@@ -3505,49 +3508,6 @@ async def cmd_delete_single_message(message: Message, bot: Bot) -> None:
         pass
 
 
-# ── /tozala [1-100] (Ko'p miqdordagi xabarlarni birdan tozalash) ───────
-@router.message(Command("tozala", "clean", "purge", ignore_case=True))
-async def cmd_bulk_clean_messages(message: Message, bot: Bot) -> None:
-    if message.chat.type in ("private",):
-        await message.reply("⚠️ Bu buyruq guruhlarda adminlar uchun ishlaydi!")
-        return
-
-    user_id = message.from_user.id if message.from_user else None
-    if not await is_admin(bot, message.chat.id, user_id, message=message):
-        await message.reply("❌ Bu buyruq faqat guruh administratorlari uchun!")
-        return
-
-    parts = (message.text or "").split()
-    count = 10
-    if len(parts) >= 2 and parts[1].isdigit():
-        count = max(1, min(100, int(parts[1])))
-    elif len(parts) >= 2 and not parts[1].isdigit():
-        await message.reply(
-            "⚠️ Foydalanish: `/tozala [1-100]`\nMasalan: `/tozala 20` (oxirgi 20 ta xabarni tozalash)",
-            parse_mode="Markdown",
-        )
-        return
-
-    start_id = message.message_id
-    deleted_count = 0
-    for mid in range(start_id, max(1, start_id - count - 1), -1):
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=mid)
-            deleted_count += 1
-        except Exception:
-            pass
-
-    confirm_msg = await bot.send_message(
-        chat_id=message.chat.id,
-        text=(
-            f"🧹 **CHAT TOZALANDI!** ✨\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🗑 Oxirgi **{deleted_count} ta** xabar muvaffaqiyatli o'chirildi.\n"
-            f"👮‍♂️ Admin: {get_admin_name(message)}"
-        ),
-        parse_mode="Markdown",
-    )
-    asyncio.create_task(auto_delete_message(confirm_msg, 5))
 
 
 # ── Taqiqlangan so'zlar filtri (/sozqoshish, /sozochir, /sozlar, /soztozala) ──

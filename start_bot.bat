@@ -17,24 +17,22 @@ if not exist ".env" (
     echo.
 )
 
-REM 2. Python va Virtual muhitni (.venv) sozlash
-if not exist ".venv" (
-    echo [*] Virtual muhit (.venv) yaratilmoqda...
-    py -3.12 -m venv .venv 2>nul || py -3.11 -m venv .venv 2>nul || py -3 -m venv .venv 2>nul || python -m venv .venv 2>nul || "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" -m venv .venv 2>nul || "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" -m venv .venv 2>nul
+REM 2. Muhit va kutubxonalarni tekshirish
+if exist ".venv\Scripts\activate.bat" (
+    call ".venv\Scripts\activate.bat"
+)
+
+REM aiogram o'rnatilganligini tekshirish
+python -c "import aiogram" 2>nul
+if errorlevel 1 (
+    echo [*] Kerakli kutubxonalar o'rnatilmoqda...
+    pip install -r requirements.txt
     if errorlevel 1 (
-        echo [XATO] Python topilmadi! Iltimos, Python 3.10+ o'rnating va uni PATH ga qo'shing.
+        echo [XATO] Kutubxonalarni o'rnatishda xatolik yuz berdi!
         pause
         exit /b 1
     )
-    echo [OK] Virtual muhit yaratildi!
-    
-    echo [*] Kutubxonalar o'rnatilmoqda...
-    call .venv\Scripts\activate.bat
-    python -m pip install --upgrade pip
-    pip install -r requirements.txt
     echo [OK] Barcha kutubxonalar muvaffaqiyatli o'rnatildi!
-) else (
-    call .venv\Scripts\activate.bat
 )
 
 echo.
