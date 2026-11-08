@@ -17,7 +17,14 @@ from config import ADMIN_IDS
 from database.db import db
 from filters.admin_filter import is_admin
 from handlers.admin import get_settings_keyboard
-from services.ui_utils import make_progress_bar, pop_user_invite_warn_msg, pop_user_invite_warn_msgs
+from services.ui_utils import (
+    make_progress_bar,
+    pop_user_invite_warn_msg,
+    pop_user_invite_warn_msgs,
+    escape_md,
+    safe_mention,
+    safe_reply,
+)
 
 logger = logging.getLogger(__name__)
 router = Router(name="group_events")
@@ -192,9 +199,8 @@ async def send_invite_notification(
 ) -> None:
     """Yangi a'zo qo'shilganda zamonaviy foizli va progress barli bildirishnoma yuborish."""
     min_req = int(group.get("min_invites") or 0)
-    inviter_name = inviter.full_name or "Foydalanuvchi"
-    inviter_mention = f"[{inviter_name}](tg://user?id={inviter.id})"
-    new_user_name = new_user.full_name or "Yangi a'zo"
+    inviter_mention = safe_mention(inviter.full_name, inviter.id)
+    new_user_name = escape_md(new_user.full_name) or "Yangi a'zo"
 
     # Avvalgi barcha ogohlantirish xabarlarini guruhdan avtomatik o'chirib tashlaymiz
     db_warns = await db.pop_invite_warnings(chat_id, inviter.id)
@@ -265,10 +271,14 @@ async def send_invite_notification(
             text=text,
             parse_mode="Markdown",
         )
-        # Xabar 1 daqiqa (60 soniya) turadi
-        asyncio.create_task(auto_delete_msg(msg, 60))
-    except Exception as e:
-        logger.debug(f"Taklif xabarini yuborishda xatolik: {e}")
+    except Exception:
+        clean_text = text.replace("*", "").replace("`", "").replace("_", "")
+        msg = await bot.send_message(
+            chat_id=chat_id,
+            text=clean_text,
+        )
+    # Xabar 1 daqiqa (60 soniya) turadi
+    asyncio.create_task(auto_delete_msg(msg, 60))
 
 
 async def send_welcome_message(bot: Bot, chat_id: int, chat_title: str, new_user: User, group: dict) -> None:

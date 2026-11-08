@@ -1188,20 +1188,28 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                         except Exception:
                             pass
 
-                    notify = await bot.send_message(
-                        chat_id=message.chat.id,
-                        text=(
-                            f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                            f"🚫 {mention}, siz guruhda yozish uchun kamida **{min_invites} ta** a'zo qo'shishingiz kerak!\n\n"
-                            f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites} ta ({percent}%)**\n"
-                            f"📈 **Jarayon:** {bar} **{percent}%**\n"
-                            f"➕ **Yozish huquqi uchun yana:** **{left_needed} ta** a'zo qo'shishingiz kerak!\n\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"💡 Guruhga do'stlaringizni taklif qiling va suhbatga qo'shiling! 😊"
-                        ),
-                        parse_mode="Markdown",
-                    )
+                    try:
+                        notify = await bot.send_message(
+                            chat_id=message.chat.id,
+                            text=(
+                                f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                                f"🚫 {mention}, siz guruhda yozish uchun kamida **{min_invites} ta** a'zo qo'shishingiz kerak!\n\n"
+                                f"📊 **Siz qo'shgan a'zolar:** **{user_invites} / {min_invites} ta ({percent}%)**\n"
+                                f"📈 **Jarayon:** {bar} **{percent}%**\n"
+                                f"➕ **Yozish huquqi uchun yana:** **{left_needed} ta** a'zo qo'shishingiz kerak!\n\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"💡 Guruhga do'stlaringizni taklif qiling va suhbatga qo'shiling! 😊"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                    except Exception:
+                        clean_text = (
+                            f"👥 MAJBURIY A'ZO QO'SHISH TALABI\n\n"
+                            f"🚫 Guruhda yozish uchun kamida {min_invites} ta a'zo qo'shishingiz kerak!\n"
+                            f"Siz qo'shgan a'zolar: {user_invites} / {min_invites} ta"
+                        )
+                        notify = await bot.send_message(chat_id=message.chat.id, text=clean_text)
                     await db.add_invite_warning(message.chat.id, message.from_user.id, notify.message_id)
                     set_user_invite_warn_msg(message.chat.id, message.from_user.id, notify.message_id)
                     asyncio.create_task(auto_delete_notification(notify, 60))

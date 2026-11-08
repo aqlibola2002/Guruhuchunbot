@@ -214,7 +214,9 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
         return
 
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
-    current = group.get("min_invites", 0)
+    current = int(group.get("min_invites") or 0)
+    inv_enabled = int(group.get("invites_enabled", 1))
+    safe_title = escape_md(message.chat.title)
 
     # Admin ekanligini tekshirish (anonim admin va guruh egasini ham hisobga olgan holda)
     user_id = message.from_user.id if message.from_user else None
@@ -223,70 +225,111 @@ async def cmd_odam(message: Message, bot: Bot) -> None:
     # Agar oddiy a'zo yozsa, hozirgi talab haqida ma'lumot beramiz
     if not user_is_admin:
         user_invites = await db.get_user_invites(message.chat.id, user_id) if user_id else 0
-        if current > 0:
+        if current > 0 and inv_enabled == 1:
             left = max(0, current - user_invites)
             percent = min(100, int(round((user_invites / current) * 100)))
             bar = make_progress_bar(percent)
-            await message.reply(
+            await safe_reply(
+                message,
                 f"👥 **MAJBURIY A'ZO QO'SHISH TALABI** 👥\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📌 Guruhda erkin yozish uchun har bir a'zo kamida **{current} ta** odam qo'shishi shart.\n\n"
-                f"├ 📊 Siz qo'shgan a'zolar: **{user_invites} / {current} ta ({percent}%)**\n"
-                f"├ 📈 Jarayon: {bar} **{percent}%**\n"
-                f"└ ➕ Qolgan: **{left} ta** yangi a'zo\n\n"
+                f"├ 📊 **Siz qo'shgan a'zolar:** **{user_invites} / {current} ta ({percent}%)**\n"
+                f"├ 📈 **Jarayon:** {bar} **{percent}%**\n"
+                f"└ ➕ **Qolgan:** **{left} ta** yangi a'zo\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"💡 Takliflaringizni to'liq ko'rish uchun: `/takliflarim`",
-                parse_mode="Markdown",
             )
         else:
-            await message.reply(
+            await safe_reply(
+                message,
                 f"👥 **MAJBURIY A'ZO TALABI** 👥\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"Bu guruhda hozirda majburiy a'zo qo'shish talabi yo'q (barcha uchun erkin muloqot) ✨\n\n"
+                f"Ushbu guruhda hozirda majburiy a'zo qo'shish talabi yo'q (barcha uchun erkin muloqot) ✨\n\n"
                 f"ℹ️ Agar siz guruh admini bo'lsangiz, talab o'rnatish uchun: `/odam [soni]`",
-                parse_mode="Markdown",
             )
         return
 
     # Admin tomonidan chaqirilganda
     parts = (message.text or "").split()
     if len(parts) < 2 or not parts[1].isdigit():
-        await message.reply(
-            f"👥 **MAJBURIY A'ZO TALABI SOZLASH** 👥\n"
+        status_desc = f"**{current} ta a'zo** qo'shish shart" if (current > 0 and inv_enabled == 1) else "Cheklov yo'q (erkin yozish)"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 3 ta", callback_data="set_inv_count:3"),
+                    InlineKeyboardButton(text="👥 5 ta", callback_data="set_inv_count:5"),
+                    InlineKeyboardButton(text="👥 10 ta", callback_data="set_inv_count:10"),
+                ],
+                [
+                    InlineKeyboardButton(text="👥 15 ta", callback_data="set_inv_count:15"),
+                    InlineKeyboardButton(text="👥 20 ta", callback_data="set_inv_count:20"),
+                    InlineKeyboardButton(text="🔓 O'chirish (0)", callback_data="set_inv_count:0"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔄 Barcha takliflarni 0 qilish (/nol)", callback_data="btn_reset_all_invites"),
+                ],
+            ]
+        )
+        await safe_reply(
+            message,
+            f"👥 **MAJBURIY A'ZO QO'SHISH TALABI (SOZLASH)** 🎯\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📌 Hozirgi o'rnatilgan talab: **{current} ta**\n\n"
+            f"🏛 **Guruh:** «{safe_title}»\n"
+            f"📌 **Hozirgi talab:** {status_desc}\n\n"
             f"Har qanday son qo'yishingiz mumkin:\n"
-            f"├ `/odam 5` — Har bir a'zo guruhda yozish uchun 5 ta odam qo'shishi shart bo'ladi.\n"
+            f"├ `/odam 5` — Har bir a'zo yozish uchun kamida 5 ta odam qo'shishi shart bo'ladi.\n"
             f"├ `/odam 10` — Talabni 10 taga oshirish.\n"
-            f"└ `/odam 0` — Cheklovni butunlay o'chirish (hammaga ruxsat).",
-            parse_mode="Markdown",
+            f"└ `/odam 0` — Cheklovni butunlay o'chirish (hammaga ruxsat).\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡️ *Quyidagi tugmalar orqali bir bosishda sozlang:*",
+            reply_markup=kb,
         )
         return
 
     count = int(parts[1])
     await db.set_min_invites(message.chat.id, count)
+    await db.update_group_setting(message.chat.id, "invites_enabled", 1 if count > 0 else 0)
 
+    admin_n = get_admin_name(message)
     if count > 0:
-        await message.reply(
-            f"👥 **MAJBURIY TAKLIF TALABI O'RNATILDI** ✅\n"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Butun guruh takliflarini 0 qilish", callback_data="btn_reset_all_invites")],
+                [InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin")],
+            ]
+        )
+        await safe_reply(
+            message,
+            f"👥 **MAJBURIY TAKLIF TALABI O'RNATILDI!** ✅\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🎯 Yangi talab: **{count} ta odam qo'shish shart!**\n\n"
+            f"🏛 **Guruh:** «{safe_title}»\n"
+            f"🎯 **Yangi talab:** Har bir a'zo kamida **{count} ta** odam qo'shishi shart!\n\n"
             f"├ 📌 Endi oddiy a'zolar guruhda yozishlari uchun kamida **{count}** ta do'stini taklif qilishlari shart.\n"
             f"├ 🚫 A'zo qo'shmaganlarning xabarlari avtomatik o'chiriladi va ogohlantirish yuboriladi.\n"
-            f"└ 👮‍♂️ Admin: {get_admin_name(message)}\n\n"
+            f"└ 👮‍♂️ **Admin:** {admin_n}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"📊 Takliflarni ko'rish: `/takliflarim` | Reyting: `/toptaklif`",
-            parse_mode="Markdown",
+            reply_markup=kb,
         )
     else:
-        await message.reply(
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👥 5 ta a'zo talabini yoqish", callback_data="set_inv_count:5")],
+            ]
+        )
+        await safe_reply(
+            message,
             f"🔓 **MAJBURIY TAKLIF TALABI O'CHIRILDI** 🔓\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏛 **Guruh:** «{safe_title}»\n"
             f"✅ Endi barcha guruh a'zolari erkin muloqot qilishi mumkin.\n\n"
-            f"👮‍♂️ Admin: {get_admin_name(message)}",
-            parse_mode="Markdown",
+            f"👮‍♂️ **Admin:** {admin_n}",
+            reply_markup=kb,
         )
 
 
-# ── /nol [A'zo qo'shgan odamlarni nol qilish] ──────────────────────────
+# ── /nol [A'zo yoki guruh takliflarini nol qilish] ─────────────────────
 @router.message(Command("nol", "resetinvites", "nolga", "taklifnol", ignore_case=True))
 async def cmd_reset_invites(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
@@ -299,84 +342,325 @@ async def cmd_reset_invites(message: Message, bot: Bot) -> None:
         return
 
     parts = (message.text or "").split()
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    min_inv = int(group.get("min_invites") or 0)
+    inv_enabled = int(group.get("invites_enabled", 1))
+    safe_title = escape_md(message.chat.title)
+    admin_name = get_admin_name(message)
 
-    # Agar barcha a'zolarning takliflarini birdaniga nol qilish so'ralsa: /nol all yoki /nol hammasi
-    if len(parts) > 1 and parts[1].lower() in ("all", "hammasi", "barchasi", "hamma"):
+    # 1. Agar barcha a'zolarning takliflarini birdaniga nol qilish so'ralsa: /nol all yoki /nol hammasi yoki /nol barchasi
+    if len(parts) > 1 and parts[1].lower() in ("all", "hammasi", "barchasi", "hamma", "guruh"):
         deleted = await db.reset_all_group_invites(message.chat.id)
-        group = await db.get_or_create_group(message.chat.id)
-        min_inv = group.get("min_invites", 0)
-        inv_note = (
-            f"\n\n⚠️ Guruhda yozish uchun kamida **{min_inv}** ta odam qo'shish talabi o'rnatilgan. "
-            f"Endi barcha a'zolar qaytadan odam qo'shishi shart!"
-            if min_inv > 0 and group.get("invites_enabled", 1) == 1
-            else ""
-        )
-        await message.reply(
-            f"0️⃣ **BARCHA TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
+        if min_inv > 0 and inv_enabled == 1:
+            req_info = (
+                f"🎯 **Guruhdagi talab:** Har bir a'zo kamida **{min_inv} ta** odam qo'shishi shart!\n\n"
+                f"🚫 **Barcha a'zolarning taklif hisoblari 0 ga tushirildi!**\n"
+                f"💬 Endi a'zolar guruhda xabar yozishlari uchun qaytadan kamida **{min_inv} ta** yangi do'stini qo'shishi shart!"
+            )
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="📊 Taklifchilar reytingi", callback_data="show_top_inviters")],
+                    [InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin")],
+                ]
+            )
+        else:
+            req_info = (
+                f"⚠️ **DIQQAT: Guruhda hozirda majburiy a'zo talabi yoqilmagan (/odam 0).**\n\n"
+                f"Oddiy a'zolar yozishidan oldin majburiy odam qo'shishi uchun, "
+                f"quyidagi tugmalar orqali talab sonini belgilang:"
+            )
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="👥 /odam 5 ta qilish", callback_data="set_inv_count:5"),
+                        InlineKeyboardButton(text="👥 /odam 10 ta qilish", callback_data="set_inv_count:10"),
+                    ],
+                    [InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin")],
+                ]
+            )
+
+        text = (
+            f"0️⃣ **BARCHA A'ZOLAR TAKLIFLARI NOLGA TUSHIRILDI!** 🔄\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📊 Jami o'chirilgan taklif qaydlari: **{deleted}** ta.{inv_note}\n\n"
-            f"👮‍♂️ Admin: {get_admin_name(message)}",
-            parse_mode="Markdown",
+            f"🏛 **Guruh:** «{safe_title}»\n"
+            f"📊 **Jami o'chirilgan taklif qaydlari:** `{deleted}` ta\n\n"
+            f"{req_info}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👮‍♂️ **Admin:** {admin_name}"
         )
+        await safe_reply(message, text, reply_markup=kb)
         return
 
-    # Muayyan a'zoni reply yoki @username / ID orqali aniqlash
+    # 2. Reply qilinmagan va parametrsiz chaqirilganda — Interaktiv Boshqaruv Menyusi
     target = await resolve_target(message)
     if target.error:
-        await message.reply(
-            "0️⃣ **A'zo takliflarini nol qilish (/nol):**\n\n"
-            "Foydalanuvchi guruhga qancha odam qo'shgan bo'lsa, uning hisobini 0 ga tushiradi.\n"
-            "Agar guruhda majburiy odam qo'shish talabi bo'lsa, u qaytadan odam qo'shishi kerak bo'ladi.\n\n"
-            "**Qanday ishlatiladi:**\n"
-            "• Foydalanuvchining xabariga **Reply** qilib: `/nol`\n"
-            "• Yoki `@username` orqali: `/nol @foydalanuvchi`\n"
-            "• Yoki Telegram **ID** orqali: `/nol 123456789`\n"
-            "• Barcha a'zolarnikini birdaniga nol qilish: `/nol hammasi`",
-            parse_mode="Markdown",
+        cur_status = f"**{min_inv} ta a'zo** qo'shish shart" if (min_inv > 0 and inv_enabled == 1) else "Cheklov yo'q (erkin yozish)"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🔄 Butun guruhni 0 ga tushirish", callback_data="btn_reset_all_invites"),
+                ],
+                [
+                    InlineKeyboardButton(text="👥 /odam 5 ta", callback_data="set_inv_count:5"),
+                    InlineKeyboardButton(text="👥 /odam 10 ta", callback_data="set_inv_count:10"),
+                ],
+                [
+                    InlineKeyboardButton(text="📊 Taklifchilar reytingi", callback_data="show_top_inviters"),
+                ],
+            ]
         )
+        help_text = (
+            f"0️⃣ **TAKLIFLARNI BOSHQARISH VA NOLGA TUSHIRISH** 🔄\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏛 **Guruh:** «{safe_title}»\n"
+            f"📌 **Joriy majburiy talab:** {cur_status}\n\n"
+            f"🔹 **Bitta a'zoning takliflarini 0 qilish:**\n"
+            f"├ O'sha a'zoning xabariga **Reply** qilib: `/nol`\n"
+            f"├ Yoki username orqali: `/nol @username`\n"
+            f"└ Yoki Telegram ID orqali: `/nol 123456789`\n\n"
+            f"🔹 **Butun guruhdagi barcha takliflarni 0 qilish:**\n"
+            f"└ Pastdagi **«🔄 Butun guruhni 0 ga tushirish»** tugmasini bosing yoki `/nol hammasi` deb yozing!\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 *Tugmalar orqali bir zumda boshqaring:*"
+        )
+        await safe_reply(message, help_text, reply_markup=kb)
         return
 
+    # 3. Muayyan a'zoning takliflarini nolga tushirish (Reply yoki @username / ID)
     if target.user_id == get_bot_id(bot):
         await message.reply("🤖 Bot uchun takliflar hisoblanmaydi!")
         return
 
-    # Oldingi takliflar sonini aniqlash
     old_invites = await db.get_user_invites(message.chat.id, target.user_id)
-
-    # Bazadan takliflarni tozalash (0 qilish)
     await db.reset_user_invites(message.chat.id, target.user_id)
 
-    # Guruhning majburiy taklif sozlamasini olish
-    group = await db.get_or_create_group(message.chat.id)
-    min_inv = group.get("min_invites", 0)
-    inv_enabled = group.get("invites_enabled", 1)
-
     mention = safe_mention(target.full_name, target.user_id)
-
     target_is_admin = await is_admin(bot, message.chat.id, target.user_id)
-    if target_is_admin:
-        extra_note = (
-            "ℹ️ _Eslatma: Ushbu a'zo guruh admini bo'lganligi sababli, "
-            "unga majburiy a'zo qo'shish cheklovi ta'sir qilmaydi._"
-        )
-    elif inv_enabled == 1 and min_inv > 0:
-        extra_note = (
-            f"🚫 **Diqqat:** Guruhda yozish uchun kamida **{min_inv}** ta odam qo'shish talabi mavjud.\n"
-            f"Endi {mention} guruhda xabar yoza olishi uchun yana kamida **{min_inv}** ta yangi odam qo'shishi shart!"
-        )
-    else:
-        extra_note = "ℹ️ Ushbu a'zoning barcha takliflari 0 ga tushirildi."
 
-    await safe_reply(
-        message,
-        f"0️⃣ **TAKLIFLAR NOLGA TUSHIRILDI** 0️⃣\n"
+    # Agar min_invites > 0 bo'lsa, qoidabuzarni darhol yozishdan cheklaymiz
+    if min_inv > 0 and inv_enabled == 1 and not target_is_admin:
+        try:
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=target.user_id,
+                permissions=ChatPermissions(can_send_messages=False),
+            )
+        except Exception:
+            pass
+
+        extra_note = (
+            f"🚫 **YOZISH HUQUQI CHEKLANDI!**\n"
+            f"📌 Guruhda majburiy talab: kamida **{min_inv} ta** odam qo'shish shart.\n"
+            f"💬 Endi {mention} guruhda xabar yoza olishi uchun yana kamida **{min_inv} ta** yangi a'zo taklif qilishi shart!"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🔄 Butun guruhni 0 qilish", callback_data="btn_reset_all_invites"),
+                ]
+            ]
+        )
+    elif target_is_admin:
+        extra_note = "ℹ️ _Eslatma: Ushbu a'zo guruh administratori bo'lganligi sababli unga yozish cheklovi ta'sir qilmaydi._"
+        kb = None
+    else:
+        extra_note = (
+            f"⚠️ **DIQQAT: Guruhda hozirda majburiy a'zo talabi belgilanmagan (/odam 0).**\n"
+            f"Shu sababli foydalanuvchi guruhda erkin yoza oladi.\n"
+            f"Agar a'zo qo'shmaguncha uni yozishdan to'xtatmoqchi bo'lsangiz, "
+            f"quyidagi tugma orqali `/odam 5` ni yoqing yoki `/chekla` buyrug'idan foydalaning!"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 /odam 5 talabini yoqish", callback_data="set_inv_count:5"),
+                    InlineKeyboardButton(text="🔇 Mute (10m)", callback_data=f"quick_mute:{target.user_id}"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔄 Butun guruhni 0 qilish", callback_data="btn_reset_all_invites"),
+                ],
+            ]
+        )
+
+    res_text = (
+        f"0️⃣ **A'ZO TAKLIFLARI NOLGA TUSHIRILDI!** 🔄\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 **A'zo:** {mention}\n"
-        f"📊 **Oldingi qo'shgan odamlari:** **{old_invites}** ta\n"
-        f"🔄 **Hozirgi takliflar:** **0** ta\n\n"
+        f"🆔 **Telegram ID:** `{target.user_id}`\n"
+        f"📊 **Oldingi qo'shgan odamlari:** `{old_invites}` ta\n"
+        f"🔄 **Hozirgi takliflar soni:** `0` ta\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"{extra_note}\n\n"
-        f"👮‍♂️ Admin: {get_admin_name(message)}",
+        f"👮‍♂️ **Admin:** {admin_name}"
     )
+    await safe_reply(message, res_text, reply_markup=kb)
+
+
+# ── Callbacklar: Takliflarni nol qilish va /odam tezkor sozlash ────────
+@router.callback_query(F.data == "btn_reset_all_invites")
+async def cb_reset_all_invites(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu buyruq faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    deleted = await db.reset_all_group_invites(call.message.chat.id)
+    group = await db.get_or_create_group(call.message.chat.id)
+    min_inv = int(group.get("min_invites") or 0)
+    inv_enabled = int(group.get("invites_enabled", 1))
+    safe_title = escape_md(call.message.chat.title)
+    admin_name = call.from_user.full_name or "Administrator"
+
+    if min_inv > 0 and inv_enabled == 1:
+        req_info = (
+            f"🎯 **Majburiy talab:** Har bir a'zo kamida **{min_inv} ta** odam qo'shishi shart!\n\n"
+            f"🚫 **Barcha a'zolarning takliflari 0 ga tushirildi!**\n"
+            f"💬 Endi har bir oddiy a'zo guruhda xabar yozishi uchun qaytadan kamida **{min_inv} ta** yangi do'stini qo'shishi shart!"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📊 Taklifchilar reytingi", callback_data="show_top_inviters")],
+                [InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin")],
+            ]
+        )
+    else:
+        req_info = (
+            f"⚠️ **DIQQAT: Guruhda hozirda majburiy a'zo talabi yoqilmagan (/odam 0).**\n\n"
+            f"Oddiy a'zolar yozishidan oldin majburiy odam qo'shishi uchun, "
+            f"quyidagi tugmalar orqali talab sonini belgilang:"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 /odam 5 ta", callback_data="set_inv_count:5"),
+                    InlineKeyboardButton(text="👥 /odam 10 ta", callback_data="set_inv_count:10"),
+                ],
+                [InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin")],
+            ]
+        )
+
+    text = (
+        f"0️⃣ **BARCHA A'ZOLAR TAKLIFLARI NOLGA TUSHIRILDI!** 🔄\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🏛 **Guruh:** «{safe_title}»\n"
+        f"📊 **Jami o'chirilgan taklif qaydlari:** `{deleted}` ta\n\n"
+        f"{req_info}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👮‍♂️ **Admin:** {admin_name}"
+    )
+    await call.answer("Barcha takliflar nolga tushirildi! ✅", show_alert=True)
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        await safe_reply(call.message, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("set_inv_count:"))
+async def cb_set_inv_count(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu buyruq faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    count_str = call.data.split(":", 1)[1]
+    count = int(count_str) if count_str.isdigit() else 5
+
+    await db.set_min_invites(call.message.chat.id, count)
+    await db.update_group_setting(call.message.chat.id, "invites_enabled", 1 if count > 0 else 0)
+    admin_name = call.from_user.full_name or "Administrator"
+    safe_title = escape_md(call.message.chat.title)
+
+    if count > 0:
+        await call.answer(f"Talab {count} ta etib belgilandi! ✅", show_alert=True)
+        res_text = (
+            f"👥 **MAJBURIY A'ZO TALABI O'RNATILDI!** ✅\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏛 **Guruh:** «{safe_title}»\n"
+            f"🎯 **Yangi talab:** Har bir a'zo kamida **{count} ta** odam qo'shishi shart!\n\n"
+            f"├ 📌 Endi oddiy a'zolar guruhda xabar yozishlari uchun kamida **{count}** ta do'stini taklif qilishlari shart.\n"
+            f"├ 🚫 A'zo qo'shmaganlarning xabarlari avtomatik o'chiriladi va ogohlantirish yuboriladi.\n"
+            f"└ 👮‍♂️ **Admin:** {admin_name}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 Takliflarni ko'rish: `/takliflarim` | Reyting: `/toptaklif`"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Butun guruhni 0 ga tushirish", callback_data="btn_reset_all_invites")],
+                [InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin")],
+            ]
+        )
+    else:
+        await call.answer("Majburiy a'zo talabi o'chirildi! 🔓", show_alert=True)
+        res_text = (
+            f"🔓 **MAJBURIY TAKLIF TALABI O'CHIRILDI** 🔓\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏛 **Guruh:** «{safe_title}»\n"
+            f"✅ Endi barcha guruh a'zolari erkin muloqot qilishi mumkin.\n\n"
+            f"👮‍♂️ **Admin:** {admin_name}"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="👥 5 ta a'zo talabini yoqish", callback_data="set_inv_count:5")],
+            ]
+        )
+
+    try:
+        await call.message.edit_text(res_text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        await safe_reply(call.message, res_text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("quick_mute:"))
+async def cb_quick_mute(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Bu buyruq faqat guruh administratorlari uchun!", show_alert=True)
+        return
+
+    target_id_str = call.data.split(":", 1)[1]
+    target_id = int(target_id_str)
+
+    until_date = datetime.now(timezone.utc) + timedelta(minutes=10)
+    try:
+        await bot.restrict_chat_member(
+            chat_id=call.message.chat.id,
+            user_id=target_id,
+            permissions=ChatPermissions(can_send_messages=False),
+            until_date=until_date,
+        )
+        await db.record_punishment(call.message.chat.id, "mute")
+        await call.answer("Foydalanuvchi 10 daqiqaga mute qilindi! 🔇", show_alert=True)
+    except Exception as e:
+        await call.answer(f"Xatolik: {e}", show_alert=True)
+
+
+@router.callback_query(F.data == "show_top_inviters")
+async def cb_show_top_inviters(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    top_inviters = await db.get_top_inviters(call.message.chat.id, limit=10)
+    safe_title = escape_md(call.message.chat.title)
+    if not top_inviters:
+        await call.answer("Guruhda hali taklifchilar faolligi yo'q.", show_alert=True)
+        return
+
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    text = (
+        f"🥇 **ENG KO'P A'ZO QO'SHGANLAR (TOP-10)** 👥\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🏛 **Guruh:** «{safe_title}»\n\n"
+    )
+    for idx, u in enumerate(top_inviters):
+        medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
+        name = escape_md(u["full_name"]) or "Foydalanuvchi"
+        uname = f" (@{escape_md(u['username'])})" if u.get("username") else ""
+        text += f"{medal} **{name}**{uname} — **{u['invite_count']} ta** a'zo\n"
+
+    await call.answer()
+    await safe_reply(call.message, text)
 
 
 # ── /kanal [@ yoki id orqali majburiy kanal va guruhlar] ───────────
@@ -2594,8 +2878,14 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
     def mark_block(val: int) -> str:
         return "🚫 Taqiqlangan" if val == 1 else "🟢 Ruxsat"
 
-    min_inv = group.get("min_invites", 0)
-    inv_text = f"👥 Majburiy a'zo ({min_inv} ta): {mark(group.get('invites_enabled', 1))}"
+    min_inv = int(group.get("min_invites") or 0)
+    inv_enabled = int(group.get("invites_enabled", 1))
+    if min_inv > 0 and inv_enabled == 1:
+        inv_text = f"👥 Majburiy a'zo ({min_inv} ta): ✅ Yoqilgan"
+    elif min_inv > 0:
+        inv_text = f"👥 Majburiy a'zo ({min_inv} ta): ❌ O'chirilgan"
+    else:
+        inv_text = "👥 Majburiy a'zo: ⚠️ Belgilanmagan (0 ta)"
 
     kb = [
         [
