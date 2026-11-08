@@ -152,9 +152,15 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin"),
+                InlineKeyboardButton(text="📊 Guruh statistikasi", callback_data="show_stats_admin"),
             ],
             [
-                InlineKeyboardButton(text="📊 Statistika", callback_data="show_stats_admin"),
+                InlineKeyboardButton(text="👥 Majburiy a'zo (/odam)", callback_data="admin_btn_odam"),
+                InlineKeyboardButton(text="0️⃣ Takliflarni 0 qilish", callback_data="admin_btn_nol"),
+            ],
+            [
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_admin_info"),
+                InlineKeyboardButton(text="❌ Yopish", callback_data="close_settings"),
             ],
         ]
     )
@@ -204,6 +210,108 @@ async def cb_show_stats_admin(call: CallbackQuery, bot: Bot) -> None:
         f"└ ⚠️ Berilgan ogohlantirishlar: **{stats.get('total_warns', 0):,}** ta",
     )
     await call.answer()
+
+
+@router.callback_query(F.data == "admin_btn_odam")
+async def cb_admin_btn_odam(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar uchun!", show_alert=True)
+        return
+    group = await db.get_or_create_group(call.message.chat.id)
+    min_inv = int(group.get("min_invites") or 0)
+    await call.answer(
+        f"👥 Guruh talabi: {min_inv} ta a'zo\n\nO'zgartirish: /odam 5 yoki /odam 10\nO'chirish: /odam 0",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data == "admin_btn_nol")
+async def cb_admin_btn_nol(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar uchun!", show_alert=True)
+        return
+    await call.answer(
+        "0️⃣ Takliflarni 0 ga tushirish:\n\n• Bir a'zoni 0 qilish: uning xabariga reply qilib /nol yozing\n• Guruhdagi hammani 0 qilish: /nol barchasi yozing",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data == "refresh_admin_info")
+async def cb_refresh_admin_info(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar uchun!", show_alert=True)
+        return
+    group = await db.get_or_create_group(call.message.chat.id, call.message.chat.title or "")
+
+    def s(val: int) -> str:
+        return "✅" if val == 1 else "❌"
+
+    min_inv = group.get("min_invites", 0)
+    inv_status = f"✅ ({min_inv} ta)" if (group.get("invites_enabled", 1) == 1 and min_inv > 0) else "❌"
+
+    from filters.admin_filter import can_bot_delete
+    bot_can_del = await can_bot_delete(bot, call.message.chat.id)
+    bot_status = "✅ Admin (o'chira oladi)" if bot_can_del else "⚠️ Admin emas (o'chira olmaydi!)"
+
+    log_ch = group.get("log_channel_id", "")
+    log_status = f"✅ Ulangan (`{log_ch}`)" if log_ch else "❌ Ulanmagan"
+
+    safe_title = escape_md(call.message.chat.title)
+    panel_text = (
+        f"👑 **GURUH BOSHQARUV PANELI (ADMIN)** 🛡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📍 **Guruh:** «{safe_title}»\n"
+        f"🤖 **Bot maqomi:** {bot_status}\n"
+        f"🛡 **Audit log kanali:** {log_status}\n\n"
+        f"⚙️ **FAOL HIMOYA VA NAZORAT TIZIMLARI:**\n"
+        f"├ {s(group.get('profanity_enabled', 1))} 🤬 Haqorat va so'kinish filtri\n"
+        f"├ {'🚫' if group.get('block_stickers', 0) == 1 else '🟢'} 🎭 Stiker va GIF taqiqi\n"
+        f"├ {'🚫' if group.get('block_voice', 0) == 1 else '🟢'} 🎙 Ovozli va Video doira taqiqi\n"
+        f"├ {s(group.get('antilink_enabled', 1))} 🔗 Begona linklar bloklanishi\n"
+        f"├ {s(group.get('antispam_enabled', 1))} 🚫 Reklama / Spam tozalash\n"
+        f"├ {s(group.get('anti_flood_enabled', 1))} ⚡️ Anti-Flood (Tezkor spam filtri)\n"
+        f"├ {s(group.get('anti_duplicate_enabled', 1))} 📑 Copy-Paste (Dublikat) spam filtri\n"
+        f"├ {s(group.get('anti_emoji_spam', 1))} 🔠 Premium Emoji cheklovi (>5 ta taqiq)\n"
+        f"├ {s(group.get('anti_arabic_enabled', 0))} 🈲 Arab/Raid spambot filtri\n"
+        f"├ {'🚫' if group.get('anti_inline_bot', 0) == 1 else '🟢'} 🤖 Inline botlar taqiqi\n"
+        f"├ {s(group.get('night_mode_enabled', 0))} 🌙 Tungi rejim ({group.get('night_mode_start', '23:00')}-{group.get('night_mode_end', '07:00')})\n"
+        f"├ {s(group.get('antiforward_enabled', 1))} 🔄 Forward xabarlar taqiqi\n"
+        f"├ {s(group.get('channels_enabled', 1))} 📢 Homiy kanal a'zoligi talabi\n"
+        f"├ {s(group.get('auto_approve_joins', 1))} 📥 Zayafkalarni avto-qabul qilish\n"
+        f"├ {inv_status} 👥 Majburiy a'zo qo'shish talabi\n"
+        f"├ {s(group.get('welcome_enabled', 1))} 👋 Yangi a'zolarni kutib olish\n"
+        f"├ {s(group.get('scheduled_enabled', 1))} ⏰ Rejali avto-xabarlar\n"
+        f"├ {s(group.get('weekly_digest_enabled', 1))} 📊 Haftalik hisobot (Dushanba 09:00)\n"
+        f"└ ✅ 🦠 APK Virus & Troyan filtri (Doimiy faol)\n\n"
+        f"🔄 *Ma'lumotlar yangilandi!*"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚙️ Sozlamalar paneli", callback_data="open_settings_from_admin"),
+                InlineKeyboardButton(text="📊 Guruh statistikasi", callback_data="show_stats_admin"),
+            ],
+            [
+                InlineKeyboardButton(text="👥 Majburiy a'zo (/odam)", callback_data="admin_btn_odam"),
+                InlineKeyboardButton(text="0️⃣ Takliflarni 0 qilish", callback_data="admin_btn_nol"),
+            ],
+            [
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_admin_info"),
+                InlineKeyboardButton(text="❌ Yopish", callback_data="close_settings"),
+            ],
+        ]
+    )
+    try:
+        await call.message.edit_text(panel_text, reply_markup=kb, parse_mode="Markdown")
+        await call.answer("Boshqaruv paneli yangilandi! ✅")
+    except Exception:
+        await call.answer("Hozirgi holat eng so'nggi ma'lumotlar bilan! ✅")
 
 
 # ── /odam [har qanday son quyish mumkin] ───────────────────────────
@@ -2296,6 +2404,16 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         admin_n = get_admin_name(message)
         safe_target_name = escape_md(target.full_name)
         safe_reason = escape_md(reason)
+        mute_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔊 Cheklovni bekor qilish (Unmute)",
+                        callback_data=f"quick_unmute:{target.user_id}",
+                    )
+                ]
+            ]
+        )
         await safe_reply(
             message,
             f"🔇 **YOZISHDAN CHEKLANDI (MUTE)** 🔇\n"
@@ -2304,6 +2422,7 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
             f"⏳ **Muddat:** **{duration_str}**\n"
             f"📝 **Sabab:** {safe_reason}\n"
             f"👮‍♂️ **Admin:** {admin_n}",
+            reply_markup=mute_kb,
         )
         asyncio.create_task(send_audit_log(
             bot=bot,
@@ -2412,6 +2531,16 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         admin_n = get_admin_name(message)
         safe_target_name = escape_md(target.full_name)
         safe_reason = escape_md(reason)
+        ban_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔓 Blokdan chiqarish (Unban)",
+                        callback_data=f"quick_unban:{target.user_id}",
+                    )
+                ]
+            ]
+        )
         await safe_reply(
             message,
             f"🚫 **GURUHDAN CHIQARILDI (BAN)** 🚫\n"
@@ -2420,6 +2549,7 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
             f"📝 **Sabab:** {safe_reason}\n"
             f"⚡️ **Holat:** Guruhdan chiqarildi va bloklandi\n"
             f"👮‍♂️ **Admin:** {admin_n}",
+            reply_markup=ban_kb,
         )
         asyncio.create_task(send_audit_log(
             bot=bot,
@@ -2483,6 +2613,76 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
         ))
     except Exception as e:
         await message.reply(f"❌ Bandan chiqarishda xatolik: {e}")
+
+
+@router.callback_query(F.data.startswith("quick_unmute:"))
+async def cb_quick_unmute(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar cheklovni bekor qilishi mumkin!", show_alert=True)
+        return
+    target_id = int(call.data.split(":")[1])
+    try:
+        await bot.restrict_chat_member(
+            chat_id=call.message.chat.id,
+            user_id=target_id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+            ),
+        )
+        admin_name = escape_md(call.from_user.full_name or "Admin")
+        orig = call.message.text or ""
+        await call.message.edit_text(
+            f"{orig}\n\n🔊 **Cheklov {admin_name} tomonidan bekor qilindi!**"
+        )
+        await call.answer("Yozish cheklovi olib tashlandi! ✅")
+    except Exception as e:
+        await call.answer(f"Xatolik: {e}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("quick_unban:"))
+async def cb_quick_unban(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar blokdan chiqarishi mumkin!", show_alert=True)
+        return
+    target_id = int(call.data.split(":")[1])
+    try:
+        await bot.unban_chat_member(
+            chat_id=call.message.chat.id,
+            user_id=target_id,
+            only_if_banned=True,
+        )
+        admin_name = escape_md(call.from_user.full_name or "Admin")
+        orig = call.message.text or ""
+        await call.message.edit_text(
+            f"{orig}\n\n🔓 **Foydalanuvchi {admin_name} tomonidan blokdan chiqarildi!**"
+        )
+        await call.answer("Foydalanuvchi blokdan chiqarildi! ✅")
+    except Exception as e:
+        await call.answer(f"Xatolik: {e}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("quick_unwarn:"))
+async def cb_quick_unwarn(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar ogohni bekor qilishi mumkin!", show_alert=True)
+        return
+    target_id = int(call.data.split(":")[1])
+    cnt = await db.remove_warn(call.message.chat.id, target_id)
+    admin_name = escape_md(call.from_user.full_name or "Admin")
+    orig = call.message.text or ""
+    await call.message.edit_text(
+        f"{orig}\n\n🔄 **1 ta ogohlantirish {admin_name} tomonidan bekor qilindi (Qoldi: {cnt}/{MAX_WARNS}).**"
+    )
+    await call.answer("Ogohlantirish bekor qilindi! ✅")
 
 
 # Helper: xabarlarni guruhlab (chunk) tez va xavfsiz o'chirish
@@ -2873,10 +3073,10 @@ async def cb_cleaner_clean_now(call: CallbackQuery, bot: Bot) -> None:
 # ── /sozlamalar [Himoya sozlamalarini boshqarish] ───────────────────
 def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
     def mark(val: int) -> str:
-        return "✅ Yoqilgan" if val == 1 else "❌ O'chirilgan"
+        return "✅" if val == 1 else "❌"
 
     def mark_block(val: int) -> str:
-        return "🚫 Taqiqlangan" if val == 1 else "🟢 Ruxsat"
+        return "🚫" if val == 1 else "🟢"
 
     min_inv = int(group.get("min_invites") or 0)
     inv_enabled = int(group.get("invites_enabled", 1))
@@ -2885,80 +3085,98 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
     elif min_inv > 0:
         inv_text = f"👥 Majburiy a'zo ({min_inv} ta): ❌ O'chirilgan"
     else:
-        inv_text = "👥 Majburiy a'zo: ⚠️ Belgilanmagan (0 ta)"
+        inv_text = "👥 Majburiy a'zo: ⚠️ O'rnatilmagan (0 ta)"
 
     kb = [
         [
             InlineKeyboardButton(
-                text=f"🤬 So'kinish filtri: {mark(group.get('profanity_enabled', 1))}",
+                text=f"🤬 So'kinish: {mark(group.get('profanity_enabled', 1))}",
                 callback_data="toggle_profanity",
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
-                text=f"🎭 Stiker va GIF: {mark_block(group.get('block_stickers', 0))}",
-                callback_data="toggle_block_stickers",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"🎙 Ovozli va Video doira: {mark_block(group.get('block_voice', 0))}",
-                callback_data="toggle_block_voice",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"🔗 Begona linklar: {mark(group.get('antilink_enabled', 1))}",
+                text=f"🔗 Linklar: {mark(group.get('antilink_enabled', 1))}",
                 callback_data="toggle_antilink",
-            )
+            ),
         ],
         [
             InlineKeyboardButton(
-                text=f"🛡️ Antispam/Reklama: {mark(group.get('antispam_enabled', 1))}",
+                text=f"🛡 Reklama: {mark(group.get('antispam_enabled', 1))}",
                 callback_data="toggle_antispam",
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
-                text=f"🔄 Forward xabarlar: {mark(group.get('antiforward_enabled', 1))}",
+                text=f"🔄 Forward: {mark(group.get('antiforward_enabled', 1))}",
                 callback_data="toggle_antiforward",
-            )
+            ),
         ],
         [
             InlineKeyboardButton(
-                text=f"📢 Majburiy kanallar: {mark(group.get('channels_enabled', 1))}",
+                text=f"🎭 Stiker: {mark_block(group.get('block_stickers', 0))}",
+                callback_data="toggle_block_stickers",
+            ),
+            InlineKeyboardButton(
+                text=f"🎙 Ovozli: {mark_block(group.get('block_voice', 0))}",
+                callback_data="toggle_block_voice",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"📢 Kanallar: {mark(group.get('channels_enabled', 1))}",
                 callback_data="toggle_channels",
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
-                text=f"📥 Zayafkalarni avto-qabul: {mark(group.get('auto_approve_joins', 1))}",
+                text=f"📥 Zayafka: {mark(group.get('auto_approve_joins', 1))}",
                 callback_data="toggle_auto_approve",
-            )
+            ),
         ],
         [
             InlineKeyboardButton(
-                text=f"🌙 Tungi rejim ({group.get('night_mode_start', '23:00')}-{group.get('night_mode_end', '07:00')}): {mark(group.get('night_mode_enabled', 0))}",
-                callback_data="toggle_night_mode",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"⚡️ Anti-Flood (Spam oqimi): {mark(group.get('anti_flood_enabled', 1))}",
+                text=f"⚡️ Anti-Flood: {mark(group.get('anti_flood_enabled', 1))}",
                 callback_data="toggle_anti_flood",
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
-                text=f"🈲 Arab/Xitoy/Yapon/Kores filtri: {mark(group.get('anti_arabic_enabled', 1))}",
+                text=f"🈲 Arab filtri: {mark(group.get('anti_arabic_enabled', 1))}",
                 callback_data="toggle_anti_arabic",
-            )
+            ),
         ],
         [
             InlineKeyboardButton(
-                text=f"🤖 Inline botlar: {mark_block(group.get('anti_inline_bot', 0))}",
+                text=f"📢 Anti-Kanal: {mark(group.get('anti_channel_enabled', 1))}",
+                callback_data="toggle_anti_channel",
+            ),
+            InlineKeyboardButton(
+                text=f"🔠 Caps Lock: {mark(group.get('anti_caps_enabled', 0))}",
+                callback_data="toggle_anti_caps",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🤖 Inline bot: {mark_block(group.get('anti_inline_bot', 0))}",
                 callback_data="toggle_anti_inline_bot",
-            )
+            ),
+            InlineKeyboardButton(
+                text=f"📑 Anti-Kopiya: {mark(group.get('anti_duplicate_enabled', 1))}",
+                callback_data="toggle_anti_duplicate",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"👋 Salomlash: {mark(group.get('welcome_enabled', 1))}",
+                callback_data="toggle_welcome",
+            ),
+            InlineKeyboardButton(
+                text=f"🔠 Emoji limit: {mark(group.get('anti_emoji_spam', 1))}",
+                callback_data="toggle_anti_emoji_spam",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🌙 Tungi rejim: {mark(group.get('night_mode_enabled', 0))}",
+                callback_data="toggle_night_mode",
+            ),
+            InlineKeyboardButton(
+                text=f"📊 Haftalik: {mark(group.get('weekly_digest_enabled', 1))}",
+                callback_data="toggle_weekly_digest",
+            ),
         ],
         [
             InlineKeyboardButton(
@@ -2967,48 +3185,9 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
             )
         ],
         [
-            InlineKeyboardButton(
-                text=f"📢 Kanal nomidan yozish: {mark(group.get('anti_channel_enabled', 1))}",
-                callback_data="toggle_anti_channel",
-            )
+            InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_settings"),
+            InlineKeyboardButton(text="❌ Yopish", callback_data="close_settings"),
         ],
-        [
-            InlineKeyboardButton(
-                text=f"🔠 Katta harflar (Caps Lock): {mark(group.get('anti_caps_enabled', 0))}",
-                callback_data="toggle_anti_caps",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"👋 Kutib olish: {mark(group.get('welcome_enabled', 1))}",
-                callback_data="toggle_welcome",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"⏰ Rejali xabarlar: {mark(group.get('scheduled_enabled', 1))}",
-                callback_data="toggle_scheduled",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"📑 Dublikat (Copy-Paste) spam: {mark(group.get('anti_duplicate_enabled', 1))}",
-                callback_data="toggle_anti_duplicate",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"🔠 Premium Emoji cheklovi: {mark(group.get('anti_emoji_spam', 1))}",
-                callback_data="toggle_anti_emoji_spam",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=f"📊 Haftalik hisobot (Dushanba): {mark(group.get('weekly_digest_enabled', 1))}",
-                callback_data="toggle_weekly_digest",
-            )
-        ],
-        [InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_settings")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -3091,6 +3270,19 @@ async def callback_refresh_settings(call: CallbackQuery, bot: Bot) -> None:
     group = await db.get_or_create_group(call.message.chat.id)
     await call.message.edit_reply_markup(reply_markup=get_settings_keyboard(group))
     await call.answer("Yangilandi! 🔄")
+
+
+@router.callback_query(F.data == "close_settings")
+async def callback_close_settings(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
+    if not await is_admin(bot, call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Faqat adminlar yopishi mumkin!", show_alert=True)
+        return
+    try:
+        await call.message.delete()
+    except Exception:
+        await call.answer("Yopildi! ❌")
 
 
 # ── /zayafka [Guruh va kanallarga qo'shilish arizalarini avtomatik qabul qilish] ──
@@ -3585,6 +3777,16 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
             f"👮‍♂️ **Admin:** {get_admin_name(message)}",
         )
     else:
+        warn_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔄 Ogohni bekor qilish (-1)",
+                        callback_data=f"quick_unwarn:{target.user_id}",
+                    )
+                ]
+            ]
+        )
         await safe_reply(
             message,
             f"⚠️ **OGOHLANTIRISH BERILDI!** ⚠️\n"
@@ -3594,6 +3796,7 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
             f"📝 **Sabab:** {safe_reason}\n"
             f"⚠️ *Eslatma: {MAX_WARNS} ta ogohlantirish to'plansa, avtomatik jazo qo'llaniladi!*\n"
             f"👮‍♂️ **Admin:** {get_admin_name(message)}",
+            reply_markup=warn_kb,
         )
 
 

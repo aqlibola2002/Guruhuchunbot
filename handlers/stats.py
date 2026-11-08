@@ -63,8 +63,20 @@ async def cmd_stats(message: Message, bot: Bot) -> None:
         f"🏆 Faol a'zolar: `/reyting` | 🥇 Taklifchilar: `/toptaklif`"
     )
 
-    await safe_reply(message, text)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🏆 Faol a'zolar", callback_data="stats_btn_top_users"),
+                InlineKeyboardButton(text="🥇 Top taklifchilar", callback_data="stats_btn_top_inviters"),
+            ],
+            [
+                InlineKeyboardButton(text="⚙️ Guruh sozlamalari", callback_data="open_settings_from_admin"),
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="stats_btn_refresh"),
+            ],
+        ]
+    )
 
+    await safe_reply(message, text, reply_markup=kb)
 
 # ── /reyting (Eng faol yozuvchilar reytingi) ────────────────────────
 @router.message(Command("reyting", "top", ignore_case=True))
@@ -97,7 +109,20 @@ async def cmd_top(message: Message) -> None:
         text += f"{medal} **{name}**{username_part} — `{u['message_count']}` ta xabar\n"
 
     text += "\n✨ *Guruhda samimiy suhbatlashib, reytingingizni oshirib boring!*"
-    await safe_reply(message, text)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🥇 Top taklifchilar", callback_data="stats_btn_top_inviters"),
+                InlineKeyboardButton(text="🌟 TOP Darajalar", callback_data="btn_top_levels"),
+            ],
+            [
+                InlineKeyboardButton(text="👤 Mening profilim", callback_data="stats_btn_my_profile"),
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="stats_btn_refresh"),
+            ],
+        ]
+    )
+
+    await safe_reply(message, text, reply_markup=kb)
 
 
 # ── /takliflarim (A'zo qo'shganini hisoblash) ───────────────────────
@@ -112,6 +137,18 @@ async def cmd_takliflarim(message: Message) -> None:
 
     group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
     min_inv = int(group.get("min_invites") or 0)
+
+    taklif_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🥇 Top taklifchilar", callback_data="stats_btn_top_inviters"),
+                InlineKeyboardButton(text="🏆 Faol a'zolar", callback_data="stats_btn_top_users"),
+            ],
+            [
+                InlineKeyboardButton(text="👤 Mening profilim", callback_data="stats_btn_my_profile"),
+            ],
+        ]
+    )
 
     # Agar boshqa bir a'zoning xabariga Reply qilingan bo'lsa
     if message.reply_to_message and message.reply_to_message.from_user:
@@ -144,6 +181,7 @@ async def cmd_takliflarim(message: Message) -> None:
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 **A'zo:** {safe_target_name}\n"
             f"{status_text}",
+            reply_markup=taklif_kb,
         )
         return
 
@@ -181,6 +219,7 @@ async def cmd_takliflarim(message: Message) -> None:
         f"👤 **Foydalanuvchi:** {user_name}\n"
         f"{status_text}\n\n"
         f"💡 *Boshqa a'zoning takliflarini bilish uchun uning xabariga Reply qilib `/takliflarim` deb yozing!*",
+        reply_markup=taklif_kb,
     )
 
 
@@ -224,7 +263,20 @@ async def cmd_top_invites(message: Message) -> None:
             text += f"{medal} **{name}**{username_part} — **{cnt} ta** a'zo qo'shgan\n"
 
     text += "\n💡 *Guruhga do'stlaringizni taklif qiling va reytingda 1-o'ringa chiqing!*\nO'z hisobingiz: `/takliflarim`"
-    await safe_reply(message, text)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📊 Mening takliflarim", callback_data="stats_btn_my_invites"),
+                InlineKeyboardButton(text="🏆 Eng faol a'zolar", callback_data="stats_btn_top_users"),
+            ],
+            [
+                InlineKeyboardButton(text="🌟 TOP Darajalar", callback_data="btn_top_levels"),
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="stats_btn_refresh"),
+            ],
+        ]
+    )
+
+    await safe_reply(message, text, reply_markup=kb)
 
 
 # ── /profil (Foydalanuvchi profili, darajasi va yutuqlari) ─────────
@@ -281,7 +333,11 @@ async def cmd_user_profile(message: Message) -> None:
             [
                 InlineKeyboardButton(text="🎁 Kunlik Bonus XP", callback_data="btn_claim_daily"),
                 InlineKeyboardButton(text="🏆 TOP Darajalar", callback_data="btn_top_levels"),
-            ]
+            ],
+            [
+                InlineKeyboardButton(text="📊 Mening takliflarim", callback_data="stats_btn_my_invites"),
+                InlineKeyboardButton(text="🥇 Top taklifchilar", callback_data="stats_btn_top_inviters"),
+            ],
         ]
     )
 
@@ -358,7 +414,20 @@ async def cmd_top_levels(message: Message) -> None:
         text += f"{medal} **{name}**{uname}\n   ⭐ **Level {lvl}** ({xp} XP) • {title} • 🌟 {rep} rep\n\n"
 
     text += "💡 *Xabar yozing, do'stlaringizni taklif qiling va har kuni `/kunlik` oling!*\nSizning profilingiz: `/profil`"
-    await safe_reply(message, text)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🎁 Kunlik bonus", callback_data="btn_claim_daily"),
+                InlineKeyboardButton(text="👤 Mening profilim", callback_data="stats_btn_my_profile"),
+            ],
+            [
+                InlineKeyboardButton(text="🏆 Faol a'zolar", callback_data="stats_btn_top_users"),
+                InlineKeyboardButton(text="🥇 Top taklifchilar", callback_data="stats_btn_top_inviters"),
+            ],
+        ]
+    )
+
+    await safe_reply(message, text, reply_markup=kb)
 
 
 # ── /tasodif (Konkurs va giveaway lar uchun tasodifiy g'olib) ───────
@@ -486,6 +555,137 @@ async def cb_top_levels(call: CallbackQuery) -> None:
         med = medals[idx] if idx < len(medals) else f"{idx+1}."
         lines.append(f"{med} {u['full_name']} — Level {u.get('level', 1)} ({u.get('xp', 0)} XP)")
     await call.answer("\n".join(lines), show_alert=True)
+
+
+@router.callback_query(F.data == "stats_btn_top_users")
+async def cb_stats_top_users(call: CallbackQuery) -> None:
+    if not call.message:
+        return
+    top_users = await db.get_top_users(call.message.chat.id, limit=5)
+    if not top_users:
+        await call.answer("Guruhda hali faol a'zolar yo'q", show_alert=True)
+        return
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    lines = ["🏆 ENG FAOL A'ZOLAR:"]
+    for idx, u in enumerate(top_users):
+        med = medals[idx] if idx < len(medals) else f"{idx+1}."
+        lines.append(f"{med} {u['full_name']} — {u['message_count']} ta xabar")
+    await call.answer("\n".join(lines), show_alert=True)
+
+
+@router.callback_query(F.data == "stats_btn_top_inviters")
+async def cb_stats_top_inviters(call: CallbackQuery) -> None:
+    if not call.message:
+        return
+    top_inviters = await db.get_top_inviters(call.message.chat.id, limit=5)
+    if not top_inviters:
+        await call.answer("Guruhda hali taklif qilganlar yo'q", show_alert=True)
+        return
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    lines = ["🥇 TOP TAKLIFCHILAR:"]
+    for idx, u in enumerate(top_inviters):
+        med = medals[idx] if idx < len(medals) else f"{idx+1}."
+        lines.append(f"{med} {u['full_name']} — {u['invite_count']} ta a'zo")
+    await call.answer("\n".join(lines), show_alert=True)
+
+
+@router.callback_query(F.data == "stats_btn_my_profile")
+async def cb_stats_my_profile(call: CallbackQuery) -> None:
+    if not call.message or not call.from_user:
+        return
+    profile = await db.get_user_profile(call.message.chat.id, call.from_user.id)
+    lvl = profile.get("level", 1)
+    xp = profile.get("xp", 0)
+    invites = profile.get("invites_count", 0)
+    msgs = profile.get("message_count", 0)
+    rep = profile.get("reputation", 0)
+    title = get_level_title(lvl)
+    await call.answer(
+        f"👤 Profil: {call.from_user.first_name}\n"
+        f"⭐ Level {lvl} ({title})\n"
+        f"📈 Tajriba: {xp} XP | 🌟 Rep: {rep}\n"
+        f"💬 Xabarlar: {msgs} ta\n"
+        f"👥 Takliflar: {invites} ta",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data == "stats_btn_my_invites")
+async def cb_stats_my_invites(call: CallbackQuery) -> None:
+    if not call.message or not call.from_user:
+        return
+    group = await db.get_or_create_group(call.message.chat.id)
+    min_inv = int(group.get("min_invites") or 0)
+    invites = await db.get_user_invites(call.message.chat.id, call.from_user.id)
+    if min_inv > 0:
+        pct = min(100, int(round((invites / min_inv) * 100)))
+        status = "✅ Yetarli (yozishga ruxsat)" if invites >= min_inv else f"⚠️ Yana {min_inv - invites} ta kerak"
+        await call.answer(
+            f"👥 Sizning takliflaringiz: {invites} / {min_inv} ta ({pct}%)\n{status}",
+            show_alert=True,
+        )
+    else:
+        await call.answer(f"👥 Siz taklif qilgan a'zolar: {invites} ta\n(Guruhda taklif cheklovi yo'q)", show_alert=True)
+
+
+@router.callback_query(F.data == "stats_btn_refresh")
+async def cb_stats_refresh(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message:
+        return
+    chat_id = call.message.chat.id
+    stats = await db.get_group_stats(chat_id)
+    group = await db.get_or_create_group(chat_id, call.message.chat.title or "")
+    try:
+        member_count = await bot.get_chat_member_count(chat_id)
+    except Exception:
+        member_count = "Noma'lum"
+
+    def mark(val: int) -> str:
+        return "✅ Faol" if val == 1 else "❌ O'chirilgan"
+
+    min_inv = group.get("min_invites", 0)
+    inv_req_text = f"{min_inv} ta ({mark(group.get('invites_enabled', 1))})" if min_inv > 0 else "Cheklov yo'q"
+    night_mode_text = f"🌙 Faol ({group.get('night_mode_start', '23:00')} - {group.get('night_mode_end', '07:00')})" if group.get("night_mode_enabled", 0) else "❌ O'chirilgan"
+    safe_title = escape_md(call.message.chat.title)
+
+    text = (
+        f"📊 **GURUH STATISTIKA DASHBOARDI** 📈\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🏛 **Guruh:** «{safe_title}»\n"
+        f"👥 **Jami a'zolar:** `{member_count}` nafar\n"
+        f"💬 **Bugungi faollik:** `{stats['today_messages']}` ta xabar\n"
+        f"📈 **Jami qayd etilgan xabarlar:** `{stats['total_messages']}` ta\n\n"
+        f"🛡 **BUGUNGI INTIZOM CHORALARI:**\n"
+        f"├ 🔇 Cheklovlar (Mute): `{stats['today_mutes']}` ta\n"
+        f"└ 🚫 Chetlatishlar (Ban): `{stats['today_bans']}` ta\n\n"
+        f"⚙️ **HIMOYA TIZIMLARI HOLATI:**\n"
+        f"├ 🔗 Begona linklar filtri: {mark(group.get('antilink_enabled', 1))}\n"
+        f"├ 🛡️ Antispam va reklama: {mark(group.get('antispam_enabled', 1))}\n"
+        f"├ ⚡️ Anti-Flood (Tezkor spam): {mark(group.get('anti_flood_enabled', 1))}\n"
+        f"├ 🌙 Tungi rejim: {night_mode_text}\n"
+        f"├ 🈲 Arab/Sharqiy reyd filtri: {mark(group.get('anti_arabic_enabled', 0))}\n"
+        f"├ 🤖 Inline-botlar filtri: {mark(group.get('anti_inline_bot', 0))}\n"
+        f"├ 👥 Majburiy a'zo talabi: `{inv_req_text}`\n"
+        f"└ 👋 Yangi a'zolarni kutib olish: {mark(group.get('welcome_enabled', 1))}\n\n"
+        f"🔄 *Ma'lumotlar yangilandi!*"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🏆 Faol a'zolar", callback_data="stats_btn_top_users"),
+                InlineKeyboardButton(text="🥇 Top taklifchilar", callback_data="stats_btn_top_inviters"),
+            ],
+            [
+                InlineKeyboardButton(text="⚙️ Guruh sozlamalari", callback_data="open_settings_from_admin"),
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="stats_btn_refresh"),
+            ],
+        ]
+    )
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+        await call.answer("Statistika yangilandi! ✅")
+    except Exception:
+        await call.answer("Statistika eng so'nggi holatda! ✅")
 
 
 
