@@ -29,6 +29,18 @@ from services.ui_utils import (
 logger = logging.getLogger(__name__)
 router = Router(name="group_events")
 RECENT_WELCOMES: dict[tuple[int, int], float] = {}
+RECENT_INVITES: dict[tuple[int, int], float] = {}
+
+
+def check_and_mark_invite_event(chat_id: int, invited_id: int) -> bool:
+    """Agar so'nggi 10 soniyada ushbu a'zo qo'shilishi allaqachon qayta ishlangan bo'lsa True qaytaradi."""
+    now = asyncio.get_event_loop().time()
+    key = (chat_id, invited_id)
+    last = RECENT_INVITES.get(key, 0.0)
+    if now - last < 10.0:
+        return True
+    RECENT_INVITES[key] = now
+    return False
 
 
 async def auto_delete_msg(msg: Message, delay: int = 60) -> None:
@@ -277,8 +289,88 @@ async def send_invite_notification(
             chat_id=chat_id,
             text=clean_text,
         )
-    # Xabar 1 daqiqa (60 soniya) turadi
-    asyncio.create_task(auto_delete_msg(msg, 60))
+    # Xabar 3 daqiqa (180 soniya) turadi
+    asyncio.create_task(auto_delete_msg(msg, 180))
+
+
+async def send_repeat_invite_notification(
+    bot: Bot,
+    chat_id: int,
+    inviter: User,
+    new_user: User,
+    total_invites: int,
+    group: dict,
+) -> None:
+    """A'zo avval guruhga taklif qilingan bo'lsa (takroriy taklif), bu haqda ma'lumot berish."""
+    min_req = int(group.get("min_invites") or 0)
+    inviter_mention = safe_mention(inviter.full_name, inviter.id)
+    new_user_name = escape_md(new_user.full_name) or "Foydalanuvchi"
+
+    if min_req > 0:
+        percent = min(100, int(round((total_invites / min_req) * 100)))
+        bar = make_progress_bar(percent)
+        left = max(0, min_req - total_invites)
+        text = (
+            f"⚠️ **{inviter_mention}**, e'tibor bering!\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **Qo'shilgan a'zo:** {new_user_name}\n"
+            f"ℹ️ **Holat:** Ushbu a'zo avval ham guruhga qo'shilgan, shuning uchun takroriy hisoblanmaydi.\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 **Haqiqiy takliflaringiz:** **{total_invites} / {min_req} ta ({percent}%)**\n"
+            f"📈 **Jarayon:** {bar} **{percent}%**\n"
+            f"➕ **Yozish huquqi uchun yana:** **{left} ta** yangi a'zo qo'shishingiz kerak!\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 *Takliflarni tekshirish: `/takliflarim`*"
+        )
+    else:
+        text = (
+            f"⚠️ **{inviter_mention}**, {new_user_name} avval guruhga taklif qilingan (takroriy hisoblanmaydi).\n"
+            f"📊 **Jami haqiqiy takliflaringiz:** **{total_invites} ta**\n"
+            f"💡 *Takliflar reytingi: `/toptaklif`*"
+        )
+
+    try:
+        msg = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="Markdown",
+        )
+    except Exception:
+        clean_text = text.replace("*", "").replace("`", "").replace("_", "")
+        msg = await bot.send_message(
+            chat_id=chat_id,
+            text=clean_text,
+        )
+    asyncio.create_task(auto_delete_msg(msg, 120))
+
+
+async def send_bot_invite_warning(
+    bot: Bot,
+    chat_id: int,
+    inviter: User,
+    bot_user: User,
+) -> None:
+    """Bot qo'shilganda taklif sifatida hisoblanmasligi haqida ogohlantirish."""
+    inviter_mention = safe_mention(inviter.full_name, inviter.id)
+    bot_name = escape_md(bot_user.full_name) or "Bot"
+    text = (
+        f"🤖 **{inviter_mention}**, guruhga bot qo'shdingiz ({bot_name})!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ **Eslatma:** Bot qo'shish majburiy taklif hisobiga o'tmaydi.\n"
+        f"Guruhda erkin yozish uchun haqiqiy odamlarni taklif qiling! ✨"
+    )
+    try:
+        msg = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="Markdown",
+        )
+    except Exception:
+        msg = await bot.send_message(
+            chat_id=chat_id,
+            text=text.replace("*", "").replace("`", ""),
+        )
+    asyncio.create_task(auto_delete_msg(msg, 90))
 
 
 async def send_welcome_message(bot: Bot, chat_id: int, chat_title: str, new_user: User, group: dict) -> None:
@@ -415,22 +507,32 @@ async def on_user_chat_member_updated(event: ChatMemberUpdated, bot: Bot) -> Non
 
         # 1. Boshqa foydalanuvchi taklif qilgan bo'lsa (Taklif / Invite)
         if actor and actor.id != new_user.id and not actor.is_bot:
-            is_new, total_invites = await db.record_invite(
-                chat_id=event.chat.id,
-                inviter_id=actor.id,
-                invited_id=new_user.id,
-                inviter_name=actor.full_name,
-                inviter_username=actor.username,
-            )
-            if is_new:
-                await send_invite_notification(
-                    bot=bot,
+            if not check_and_mark_invite_event(event.chat.id, new_user.id):
+                is_new, total_invites = await db.record_invite(
                     chat_id=event.chat.id,
-                    inviter=actor,
-                    new_user=new_user,
-                    total_invites=total_invites,
-                    group=group,
+                    inviter_id=actor.id,
+                    invited_id=new_user.id,
+                    inviter_name=actor.full_name,
+                    inviter_username=actor.username,
                 )
+                if is_new:
+                    await send_invite_notification(
+                        bot=bot,
+                        chat_id=event.chat.id,
+                        inviter=actor,
+                        new_user=new_user,
+                        total_invites=total_invites,
+                        group=group,
+                    )
+                else:
+                    await send_repeat_invite_notification(
+                        bot=bot,
+                        chat_id=event.chat.id,
+                        inviter=actor,
+                        new_user=new_user,
+                        total_invites=total_invites,
+                        group=group,
+                    )
 
         # 2. Xush kelibsiz (Welcome) xabari yuborish
         await send_welcome_message(
@@ -466,27 +568,39 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
 
     for new_user in message.new_chat_members:
         if new_user.is_bot:
+            if inviter and not inviter.is_bot:
+                await send_bot_invite_warning(bot, message.chat.id, inviter, new_user)
             continue
 
         # Agar boshqa foydalanuvchi taklif qilgan bo'lsa (o'zi kirmagan bo'lsa)
         if inviter and inviter.id != new_user.id and not inviter.is_bot:
-            is_new, total_invites = await db.record_invite(
-                chat_id=message.chat.id,
-                inviter_id=inviter.id,
-                invited_id=new_user.id,
-                inviter_name=inviter.full_name,
-                inviter_username=inviter.username,
-            )
-
-            if is_new:
-                await send_invite_notification(
-                    bot=bot,
+            if not check_and_mark_invite_event(message.chat.id, new_user.id):
+                is_new, total_invites = await db.record_invite(
                     chat_id=message.chat.id,
-                    inviter=inviter,
-                    new_user=new_user,
-                    total_invites=total_invites,
-                    group=group,
+                    inviter_id=inviter.id,
+                    invited_id=new_user.id,
+                    inviter_name=inviter.full_name,
+                    inviter_username=inviter.username,
                 )
+
+                if is_new:
+                    await send_invite_notification(
+                        bot=bot,
+                        chat_id=message.chat.id,
+                        inviter=inviter,
+                        new_user=new_user,
+                        total_invites=total_invites,
+                        group=group,
+                    )
+                else:
+                    await send_repeat_invite_notification(
+                        bot=bot,
+                        chat_id=message.chat.id,
+                        inviter=inviter,
+                        new_user=new_user,
+                        total_invites=total_invites,
+                        group=group,
+                    )
 
         await send_welcome_message(
             bot=bot,

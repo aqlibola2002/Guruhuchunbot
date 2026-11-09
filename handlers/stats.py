@@ -153,9 +153,15 @@ async def cmd_takliflarim(message: Message) -> None:
     # Agar boshqa bir a'zoning xabariga Reply qilingan bo'lsa
     if message.reply_to_message and message.reply_to_message.from_user:
         target = message.reply_to_message.from_user
+        target_is_admin = await is_admin(message.bot, message.chat.id, target.id)
         user_invites = await db.get_user_invites(message.chat.id, target.id)
 
-        if min_inv > 0:
+        if target_is_admin:
+            status_text = (
+                f"├ 📊 **Takliflar:** **{user_invites} ta**\n"
+                f"└ 👑 **Holati:** Guruh Administratori (Cheklov qo'llanilmaydi, doim yozishga ruxsat) ✨"
+            )
+        elif min_inv > 0:
             percent = min(100, int(round((user_invites / min_inv) * 100)))
             bar = make_progress_bar(percent)
             if user_invites >= min_inv:
@@ -187,13 +193,36 @@ async def cmd_takliflarim(message: Message) -> None:
 
     # O'zining takliflari statistikasi
     user_id = message.from_user.id if message.from_user else None
-    if not user_id:
-        await message.reply("Takliflarni hisoblash uchun profilingizdan yozing.")
+    user_is_admin = await is_admin(message.bot, message.chat.id, user_id, message=message)
+
+    # Agar anonim admin yoki guruh/kanal nomidan yozilgan bo'lsa
+    if user_is_admin and (not user_id or user_id in (1087968824, 136817688, 777000) or bool(message.sender_chat)):
+        top_inviters = await db.get_top_inviters(message.chat.id, limit=3)
+        top_lines = ""
+        if top_inviters:
+            top_lines = "\n\n🥇 **Guruh yetakchi taklifchilari:**\n" + "\n".join(
+                f"├ {escape_md(u['full_name'])}: `{u['invites_count']}` ta" for u in top_inviters
+            )
+        await safe_reply(
+            message,
+            f"👑 **ADMINISTRATOR STATUSI** 🛡\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏛 **Guruh:** «{escape_md(message.chat.title)}»\n"
+            f"✅ **Yozish huquqi:** Cheklovsiz (Adminlar uchun barcha talablar ochiq)\n"
+            f"📌 **Joriy taklif talabi:** {min_inv} ta{top_lines}\n\n"
+            f"💡 *Muayyan a'zoning taklifini bilish uchun uning xabariga **Reply** qilib `/takliflarim` deb yozing!*",
+            reply_markup=taklif_kb,
+        )
         return
 
     user_name = escape_md(message.from_user.full_name if (message.from_user and message.from_user.full_name) else "Foydalanuvchi")
-    user_invites = await db.get_user_invites(message.chat.id, user_id)
-    if min_inv > 0:
+    user_invites = await db.get_user_invites(message.chat.id, user_id) if user_id else 0
+    if user_is_admin:
+        status_text = (
+            f"├ 📊 **Siz qo'shgan a'zolar:** **{user_invites} ta**\n"
+            f"└ 👑 **Holati:** Guruh Administratorisiz (cheklovlar sizga tatbiq etilmaydi) ✨"
+        )
+    elif min_inv > 0:
         percent = min(100, int(round((user_invites / min_inv) * 100)))
         bar = make_progress_bar(percent)
         if user_invites >= min_inv:

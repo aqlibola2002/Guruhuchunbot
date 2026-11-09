@@ -4427,7 +4427,8 @@ async def cmd_weekly_summary(message: Message, bot: Bot) -> None:
 SOS_COOLDOWN: dict[tuple[int, int], float] = {}
 
 
-@router.message(F.text.regexp(r"(?i)(?:^|\s)@admin(?:\s|$)") | Command("sos", "admin_chaqir", "chaqir", ignore_case=True))
+@router.message(Command("sos", "admin_chaqir", "chaqir", ignore_case=True))
+@router.message(F.text.regexp(r"(?i)(?:^|\s)@admin(?:\s|$)"))
 async def cmd_call_admin_sos(message: Message, bot: Bot) -> None:
     if message.chat.type in ("private",):
         return
