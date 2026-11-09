@@ -95,3 +95,44 @@ def pop_user_invite_warn_msg(chat_id: int, user_id: int) -> int | None:
     """Foydalanuvchining oxirgi ogohlantirish xabari ID sini olish va o'chirish."""
     msgs = pop_user_invite_warn_msgs(chat_id, user_id)
     return msgs[-1] if msgs else None
+
+
+def normalize_channel_id(ch_raw: str | int) -> tuple[int | str, str]:
+    """
+    Kanal identifikatorini Telegram API va ma'lumotlar bazasi uchun to'g'ri standartga keltiradi.
+    Qaytaradi: (target_id_for_telegram, clean_string_for_db)
+    
+    Telegram kanallari va superguruhlari sonli bo'lsa DOIM -100 bilan boshlanadi:
+    - '2121239046' -> -1002121239046, '-1002121239046'
+    - '-2121239046' -> -1002121239046, '-1002121239046'
+    - '-1002121239046' -> -1002121239046, '-1002121239046'
+    - '@kanal' -> '@kanal', '@kanal'
+    - 'kanal' -> '@kanal', '@kanal'
+    - 'https://t.me/kanal' -> '@kanal', '@kanal'
+    - 'https://t.me/c/2121239046' -> -1002121239046, '-1002121239046'
+    """
+    raw = str(ch_raw).strip()
+    if not raw:
+        return "", ""
+
+    # Havolalardan tozalash
+    if "t.me/c/" in raw:
+        clean_num = raw.split("t.me/c/")[1].split("/")[0].split("?")[0].strip().replace("-100", "").lstrip("-")
+        if clean_num.isdigit():
+            num_id = int(f"-100{clean_num}")
+            return num_id, str(num_id)
+    elif "t.me/" in raw and not ("+" in raw or "joinchat" in raw):
+        after = raw.split("t.me/")[1].split("/")[0].split("?")[0].strip()
+        raw = after
+
+    clean_num = raw.replace("-100", "").lstrip("-")
+    if clean_num.isdigit():
+        num_id = int(f"-100{clean_num}")
+        return num_id, str(num_id)
+
+    if "+" in raw or "joinchat" in raw:
+        return raw, raw
+
+    u_name = raw if raw.startswith("@") else f"@{raw}"
+    return u_name, u_name.lower()
+

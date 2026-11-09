@@ -488,20 +488,37 @@ async def on_user_chat_member_updated(event: ChatMemberUpdated, bot: Bot) -> Non
     if event.chat.type in ("private",):
         return
 
+    # Agar hodisa kanalda yuz bersa (a'zo bo'lish yoki chiqish)
+    if event.chat.type == "channel":
+        if event.new_chat_member.status in ("member", "administrator", "creator"):
+            await db.record_join_request(event.new_chat_member.user.id, str(event.chat.id))
+            if event.chat.username:
+                await db.record_join_request(event.new_chat_member.user.id, f"@{event.chat.username}".lower())
+        return
+
     old_status = event.old_chat_member.status
     new_status = event.new_chat_member.status
 
-    was_member = old_status in ("member", "administrator")
-    is_now_member = new_status in ("member", "administrator", "restricted")
+    # Faqat guruhda yangi kirgan yoki qo'shilgan holatni aniqlaymiz (unmute yoki status o'zgarishini emas)
+    is_new_join = (
+        old_status in ("left", "kicked")
+        and new_status in ("member", "administrator", "restricted")
+    )
 
-    # Yangi a'zo qo'shilgan yoki kirgan holat
-    if not was_member and is_now_member:
+    if is_new_join:
         new_user = event.new_chat_member.user
         actor = event.from_user
 
         bot_info = await bot.get_me()
         if new_user.id == bot_info.id or new_user.is_bot:
             return
+
+        # Agar a'zo guruh taklif havolasi orqali kirgan bo'lsa va havolani boshqa a'zo yaratgan bo'lsa
+        if (not actor or actor.id == new_user.id) and getattr(event, "invite_link", None):
+            inv_link = event.invite_link
+            if getattr(inv_link, "creator", None) and not inv_link.creator.is_bot:
+                if inv_link.creator.id != new_user.id:
+                    actor = inv_link.creator
 
         group = await db.get_or_create_group(event.chat.id, event.chat.title or "")
 

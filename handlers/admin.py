@@ -21,7 +21,7 @@ from database.db import db
 from filters.admin_filter import is_admin, can_bot_delete
 from services.target_resolver import resolve_target
 from handlers.moderation import send_audit_log
-from services.ui_utils import escape_md, safe_mention, safe_reply
+from services.ui_utils import escape_md, safe_mention, safe_reply, normalize_channel_id
 
 logger = logging.getLogger(__name__)
 router = Router(name="admin")
@@ -1155,11 +1155,7 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
                 )
                 return
 
-            ch_target: int | str = raw_target
-            if "t.me/" in raw_target and not (raw_target.startswith("https://t.me/+") or "joinchat" in raw_target):
-                ch_target = f"@{raw_target.split('t.me/')[1].split('/')[0].split('?')[0]}"
-            elif raw_target.startswith("-100") or (raw_target.startswith("-") and raw_target[1:].isdigit()) or raw_target.isdigit():
-                ch_target = int(raw_target)
+            ch_target, _ = normalize_channel_id(raw_target)
 
             try:
                 chat_obj = await bot.get_chat(ch_target)
@@ -1423,12 +1419,7 @@ async def cmd_kanal(message: Message, bot: Bot) -> None:
     if "+" in custom_invite_link or "joinchat" in custom_invite_link:
         is_join_request = 1
 
-    chat_target: int | str = raw_input
-    if "t.me/" in raw_input and not (raw_input.startswith("https://t.me/+") or "joinchat" in raw_input):
-        username = raw_input.split("t.me/")[1].split("/")[0].split("?")[0]
-        chat_target = f"@{username}"
-    elif raw_input.startswith("-100") or (raw_input.startswith("-") and raw_input[1:].isdigit()) or raw_input.isdigit():
-        chat_target = int(raw_input)
+    chat_target, _ = normalize_channel_id(raw_input)
 
     status_msg = await message.reply("⏳ Kanal ma'lumotlari tekshirilmoqda...")
 
@@ -1892,7 +1883,7 @@ async def cb_pm_setmode(call: CallbackQuery, bot: Bot) -> None:
         return
     parts = call.data.split(":")
     group_chat_id = int(parts[1])
-    channel_id = int(parts[2])
+    channel_id, _ = normalize_channel_id(parts[2])
     is_rq = int(parts[3])
 
     from config import ADMIN_IDS

@@ -25,7 +25,12 @@ from config import (
 )
 from database.db import db
 from filters.admin_filter import is_admin, can_bot_delete
-from services.ui_utils import make_progress_bar, set_user_invite_warn_msg, pop_user_invite_warn_msgs
+from services.ui_utils import (
+    make_progress_bar,
+    set_user_invite_warn_msg,
+    pop_user_invite_warn_msgs,
+    normalize_channel_id,
+)
 
 router = Router(name="moderation")
 logger = logging.getLogger(__name__)
@@ -254,13 +259,13 @@ async def check_user_channel_subscription(
     if await db.has_join_request(user_id, ch_str):
         return True
 
-    # 2. Telegram API get_chat_member orqali tekshirish:
-    try:
-        if ch_str.startswith("-100") or (ch_str.startswith("-") and ch_str[1:].isdigit()) or ch_str.isdigit():
-            target_chat_id: int | str = int(ch_str)
-        else:
-            target_chat_id = ch_str if ch_str.startswith("@") else f"@{ch_str}"
+    # 2. Kanal identifikatorini to'g'ri normallashtirish (-100 prefiksi, username, havola)
+    target_chat_id, _ = normalize_channel_id(ch_str)
+    if not target_chat_id:
+        return True  # Noto'g'ri kiritilgan kanallar sababli foydalanuvchini asossiz bloklamaymiz
 
+    # 3. Telegram API get_chat_member orqali tekshirish:
+    try:
         member = await bot.get_chat_member(target_chat_id, user_id)
         if member.status in ("member", "administrator", "creator", "restricted"):
             return True
@@ -268,9 +273,15 @@ async def check_user_channel_subscription(
             # A'zo bo'lmasa, qayta zayafkasini tekshirib ko'ramiz
             return await db.has_join_request(user_id, ch_str)
     except Exception as e:
-        logger.debug(f"A'zolikni tekshirishda xatolik ({channel_id_raw}): {e}")
+        err_msg = str(e).lower()
+        logger.debug(f"A'zolikni tekshirishda xatolik ({target_chat_id}): {e}")
         # Agar bot bu kanalda a'zolikni ko'ra olmasa: ariza yuborganligini tekshiramiz
         if await db.has_join_request(user_id, ch_str):
+            return True
+        # Agar botning o'zi kanalda admin bo'lmasa yoki kanal topilmasa:
+        # Guruhdagi begunoh a'zolarni bloklab qo'ymaslik uchun ruxsat beramiz
+        if any(w in err_msg for w in ("chat not found", "bot is not a member", "not enough rights", "channel_private", "chat_admin_required")):
+            logger.warning(f"⚠️ Bot '{target_chat_id}' kanalida admin emas yoki kanal topilmadi! ({e})")
             return True
         return False
 
@@ -804,16 +815,18 @@ async def process_group_message(message: Message, bot: Bot) -> None:
                     link = ch.get("invite_link") or ""
                     title = ch.get("title") or ch["channel_id"]
                     ch_id_str = str(ch["channel_id"]).strip()
+                    target_id, _ = normalize_channel_id(ch_id_str)
+
                     if not link:
-                        if ch_id_str.startswith("@"):
-                            link = f"https://t.me/{ch_id_str.lstrip('@')}"
-                        elif ch_id_str.startswith("-100") or (ch_id_str.startswith("-") and ch_id_str[1:].isdigit()):
+                        if isinstance(target_id, str) and target_id.startswith("@"):
+                            link = f"https://t.me/{target_id.lstrip('@')}"
+                        elif isinstance(target_id, int):
                             try:
-                                created_inv = await bot.create_chat_invite_link(int(ch_id_str), name="Guruh homiylik havolasi")
+                                created_inv = await bot.create_chat_invite_link(target_id, name="Guruh homiylik havolasi")
                                 link = created_inv.invite_link
                                 await db.update_mandatory_channel_link(message.chat.id, ch_id_str, link)
                             except Exception:
-                                link = f"https://t.me/c/{ch_id_str.replace('-100', '')}"
+                                pass
 
                     if link:
                         is_rq = ch.get("is_join_request", 0) == 1 or ("+" in link or "joinchat" in link)
@@ -1734,6 +1747,20 @@ async def cb_check_subscription(call: CallbackQuery, bot: Bot) -> None:
 
     if not not_joined:
         await call.answer("🎉 Barcha kanallarga a'zoligingiz yoki arizangiz tasdiqlandi! Endi guruhda bemalol yoza olasiz ✅", show_alert=True)
+        try:
+            await bot.restrict_chat_member(
+                chat_id=call.message.chat.id,
+                user_id=call.from_user.id,
+                permissions=ChatPermissions(
+                    can_send_messages=True,
+                    can_send_media_messages=True,
+                    can_send_polls=True,
+                    can_send_other_messages=True,
+                    can_add_web_page_previews=True,
+                ),
+            )
+        except Exception:
+            pass
         try:
             await call.message.delete()
         except Exception:
