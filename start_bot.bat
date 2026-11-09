@@ -42,10 +42,14 @@ echo   To'xtatish uchun: Ctrl + C tugmalarini bosing
 echo ========================================================
 echo.
 
+:run_bot
 python main.py
 
-if errorlevel 1 (
-    echo.
-    echo [!] Bot to'xtadi yoki xatolik yuz berdi.
-    pause
-)
+echo.
+echo ========================================================
+echo   [!] Bot to'xtadi yoki internet uzildi.
+echo   5 soniyadan so'ng avtomatik qayta ishga tushiriladi...
+echo   (Butunlay to'xtatish uchun: Ctrl + C tugmasini bosing)
+echo ========================================================
+timeout /t 5 > nul
+goto run_bot
