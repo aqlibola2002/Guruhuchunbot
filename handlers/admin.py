@@ -129,6 +129,7 @@ async def cmd_admin_info(message: Message, bot: Bot) -> None:
         f"├ {s(group.get('welcome_enabled', 1))} 👋 Yangi a'zolarni kutib olish\n"
         f"├ {s(group.get('scheduled_enabled', 1))} ⏰ Rejali avto-xabarlar\n"
         f"├ {s(group.get('weekly_digest_enabled', 1))} 📊 Haftalik hisobot (Dushanba 09:00)\n"
+        f"├ {s(group.get('clean_service_enabled', 1))} 🗑 Kirdi-Chiqdi xabarlarini avto-tozalash\n"
         f"└ ✅ 🦠 APK Virus & Troyan filtri (Doimiy faol)\n\n"
         f"📌 **ASOSIY BUYRUQLAR RO'YXATI:**\n"
         f"├ ⚙️ `/sozlamalar` — Himoya sozlamalari boshqaruv menyusi\n"
@@ -288,6 +289,7 @@ async def cb_refresh_admin_info(call: CallbackQuery, bot: Bot) -> None:
         f"├ {s(group.get('welcome_enabled', 1))} 👋 Yangi a'zolarni kutib olish\n"
         f"├ {s(group.get('scheduled_enabled', 1))} ⏰ Rejali avto-xabarlar\n"
         f"├ {s(group.get('weekly_digest_enabled', 1))} 📊 Haftalik hisobot (Dushanba 09:00)\n"
+        f"├ {s(group.get('clean_service_enabled', 1))} 🗑 Kirdi-Chiqdi xabarlarini avto-tozalash\n"
         f"└ ✅ 🦠 APK Virus & Troyan filtri (Doimiy faol)\n\n"
         f"🔄 *Ma'lumotlar yangilandi!*"
     )
@@ -3174,8 +3176,18 @@ def get_settings_keyboard(group: dict) -> InlineKeyboardMarkup:
                 callback_data="toggle_night_mode",
             ),
             InlineKeyboardButton(
-                text=f"📊 Haftalik: {mark(group.get('weekly_digest_enabled', 1))}",
+                text=f"🗑 Kirdi-Chiqdi: {mark(group.get('clean_service_enabled', 1))}",
+                callback_data="toggle_clean_service",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"📊 Haftalik hisobot: {mark(group.get('weekly_digest_enabled', 1))}",
                 callback_data="toggle_weekly_digest",
+            ),
+            InlineKeyboardButton(
+                text=f"🧹 Avto-tozalash: {mark(group.get('auto_clean_enabled', 1))}",
+                callback_data="toggle_auto_clean",
             ),
         ],
         [

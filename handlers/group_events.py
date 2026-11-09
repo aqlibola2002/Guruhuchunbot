@@ -445,11 +445,14 @@ async def on_user_chat_member_updated(event: ChatMemberUpdated, bot: Bot) -> Non
 # ── Yangi a'zolar qo'shilganda (Message xizmati orqali) ──────────────
 @router.message(F.new_chat_members)
 async def on_new_chat_members(message: Message, bot: Bot) -> None:
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+
     # 1. "Falonchi guruhga qo'shildi" (Kirdi) xizmat xabarini darhol o'chirish
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except Exception as e:
-        logger.debug(f"Kirdi xizmat xabarini o'chirishda: {e}")
+    if group.get("clean_service_enabled", 1) == 1:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except Exception as e:
+            logger.warning(f"Kirdi xizmat xabarini o'chirishda: {e}")
 
     bot_info = await bot.get_me()
 
@@ -509,10 +512,12 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
 )
 async def on_service_message(message: Message, bot: Bot) -> None:
     """Guruhdagi chiqdi va barcha keraksiz xizmat xabarlarini darhol o'chirish."""
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except Exception as e:
-        logger.debug(f"Xizmat xabarini o'chirishda: {e}")
+    group = await db.get_or_create_group(message.chat.id, message.chat.title or "")
+    if group.get("clean_service_enabled", 1) == 1:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except Exception as e:
+            logger.warning(f"Xizmat xabarini o'chirishda: {e}")
 
 
 # ── Inline tugmalar callbacklari ────────────────────────────────────

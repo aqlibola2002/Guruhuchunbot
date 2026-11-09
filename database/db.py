@@ -230,6 +230,10 @@ class Database:
             except Exception:
                 pass
             try:
+                await conn.execute("ALTER TABLE groups ADD COLUMN clean_service_enabled INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
                 await conn.execute("UPDATE groups SET auto_approve_joins = 1 WHERE auto_approve_joins IS NULL")
             except Exception:
                 pass
