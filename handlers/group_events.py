@@ -673,6 +673,8 @@ async def cb_open_settings(call: CallbackQuery, bot: Bot) -> None:
 
 @router.callback_query(F.data == "btn_rules")
 async def cb_rules(call: CallbackQuery) -> None:
+    if not call.message:
+        return
     rules = await db.get_group_rules(call.message.chat.id)
     if not rules:
         rules = (
@@ -705,6 +707,8 @@ async def cb_rules(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "btn_show_rating")
 async def cb_show_rating(call: CallbackQuery) -> None:
+    if not call.message:
+        return
     top_users = await db.get_top_users(call.message.chat.id, limit=5)
     if not top_users:
         await call.answer("Guruhda hali xabarlar statistikasi mavjud emas.", show_alert=True)

@@ -158,6 +158,8 @@ async def cb_admin_refresh_panel(call: CallbackQuery, bot: Bot) -> None:
 # ── 💾 Baza zaxirasini yuklab olish (/backup yoki tugma) ─────────────
 @router.callback_query(F.data == "admin_backup_db")
 async def cb_admin_backup_db(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
     if not is_bot_owner(call.from_user.id):
         await call.answer("Ruxsat yo'q!", show_alert=True)
         return
@@ -419,6 +421,8 @@ async def render_groups_page(message: Message, bot: Bot, page: int = 1, is_callb
 # ── 📋 Barcha guruh havolalarini bitta fayl (.txt) qilib yuklash ─────
 @router.callback_query(F.data == "admin_export_links_txt")
 async def cb_admin_export_links_txt(call: CallbackQuery, bot: Bot) -> None:
+    if not call.message or not call.from_user:
+        return
     if not is_bot_owner(call.from_user.id):
         await call.answer("Ruxsat yo'q!", show_alert=True)
         return

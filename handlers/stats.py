@@ -573,6 +573,8 @@ async def cb_claim_daily(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "btn_top_levels")
 async def cb_top_levels(call: CallbackQuery) -> None:
+    if not call.message:
+        return
     top_users = await db.get_top_levels(call.message.chat.id, limit=5)
     if not top_users:
         await call.answer("Guruhda hali darajalar yo'q", show_alert=True)
